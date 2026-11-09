@@ -1,0 +1,9 @@
+{
+  "network_interface": "enp4s0",
+  "target_ip": "192.168.0.10",
+  "communities": [
+    ["192.168.0.0/24", "public", 0]
+  ],
+  "operation_timeout": 5,
+  "retry_attempts": 1
+}

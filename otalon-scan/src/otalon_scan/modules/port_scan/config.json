@@ -1,0 +1,11 @@
+{
+  "network_interface": "enp4s0",
+  "target_ip": "192.168.0.1",
+  "port_range": "1-1024,1089-1091,1105,1200,1911,1962,2222,2404,2455,4000,4840,4843,4911,5007,5094,9600,10000,11740,11741,18245,19999,20000,20256,20547,34962-34964,34980,44818,46823,46824,47808,55000-55003",
+  "timing_template": "4",
+  "udp_scan": "False",
+  "detection_and_traceroute": "False",
+  "service_version_info": "False",
+  "host_timeout_ms": "5000",
+  "hard_timeout_s": "120"
+}

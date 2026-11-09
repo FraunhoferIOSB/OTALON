@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "otalon-api"
+version = "0.1.0"
+description = "REST/SSE backend serving all OTALON UI data from PostgreSQL and InfluxDB."
+requires-python = ">=3.13"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 120
+target-version = ["py313"]
+
+[tool.isort]
+profile = "black"
+line_length = 120
+known_first_party = ["otalon_api"]
+combine_as_imports = true
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["otalon_api"]
+combine-as-imports = true
+
+[tool.mypy]
+python_version = "3.13"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+# SUITE-032 folded the standalone ``pytest.ini`` in here; every key is
+# transcribed verbatim. ``src`` on the path so ``otalon_api`` resolves
+# without an editable install: the package now sits one level below ``src/``.
+pythonpath = ["src"]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "unit: Unit tests",
+    "golden: Golden data comparison tests",
+    "smoke: Endpoint smoke tests (all data endpoints, no external deps)",
+    "integration: Integration tests requiring running services",
+]

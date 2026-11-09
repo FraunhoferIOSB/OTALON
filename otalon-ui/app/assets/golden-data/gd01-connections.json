@@ -1,0 +1,86 @@
+[
+  {
+    "uci": "L2_02:00:00:00:00:04_02:00:00:00:00:05_PROFINET_RT",
+    "source": "02:00:00:00:00:04",
+    "destination": "02:00:00:00:00:05",
+    "protocol": "PROFINET",
+    "state": "normal"
+  },
+  {
+    "uci": "L2_02:00:00:00:00:04_02:00:00:00:00:06_PROFINET_RT",
+    "source": "02:00:00:00:00:04",
+    "destination": "02:00:00:00:00:06",
+    "protocol": "PROFINET",
+    "state": "normal"
+  },
+  {
+    "uci": "L2_02:00:00:00:00:05_02:00:00:00:00:06_PROFINET_RT",
+    "source": "02:00:00:00:00:05",
+    "destination": "02:00:00:00:00:06",
+    "protocol": "PROFINET",
+    "state": "anomaly"
+  },
+  {
+    "uci": "IP_192.0.2.7_192.0.2.8_4840_OPC_UA",
+    "source": "192.0.2.7:4840",
+    "destination": "192.0.2.8:4840",
+    "protocol": "OPC UA",
+    "state": "normal"
+  },
+  {
+    "uci": "IP_192.0.2.7_192.0.2.9_4840_OPC_UA",
+    "source": "192.0.2.7:4840",
+    "destination": "192.0.2.9:4840",
+    "protocol": "OPC UA",
+    "state": "normal"
+  },
+  {
+    "uci": "L2_02:00:00:00:00:04_01:0E:CF:00:00:00_LLDP",
+    "source": "02:00:00:00:00:04",
+    "destination": "01:0E:CF:00:00:00",
+    "protocol": "LLDP",
+    "state": "normal"
+  },
+  {
+    "uci": "L2_02:00:00:00:00:05_01:0E:CF:00:00:00_LLDP",
+    "source": "02:00:00:00:00:05",
+    "destination": "01:0E:CF:00:00:00",
+    "protocol": "LLDP",
+    "state": "normal"
+  },
+  {
+    "uci": "IP_192.0.2.7_224.0.0.251_5353_mDNS",
+    "source": "192.0.2.7",
+    "destination": "224.0.0.251",
+    "protocol": "mDNS",
+    "state": "normal"
+  },
+  {
+    "uci": "IP_192.0.2.8_224.0.0.251_5353_mDNS",
+    "source": "192.0.2.8",
+    "destination": "224.0.0.251",
+    "protocol": "mDNS",
+    "state": "anomaly"
+  },
+  {
+    "uci": "L2_02:00:00:00:00:0d_02:00:00:00:00:04_PROFINET_RT_IO",
+    "source": "02:00:00:00:00:0d",
+    "destination": "02:00:00:00:00:04",
+    "protocol": "PROFINET",
+    "state": "normal"
+  },
+  {
+    "uci": "IP_192.0.2.9_192.0.2.7_502_Modbus",
+    "source": "192.0.2.9",
+    "destination": "192.0.2.7:502",
+    "protocol": "Modbus",
+    "state": "normal"
+  },
+  {
+    "uci": "L2_02:00:00:00:00:06_FF:FF:FF:FF:FF:FF_ARP",
+    "source": "02:00:00:00:00:06",
+    "destination": "FF:FF:FF:FF:FF:FF",
+    "protocol": "ARP",
+    "state": "anomaly"
+  }
+]

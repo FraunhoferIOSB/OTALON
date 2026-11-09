@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Ebene_1" data-name="Ebene 1" xmlns="http://www.w3.org/2000/svg" width="102.469mm" height="102.469mm" viewBox="0 0 290.465 290.465">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: none;
+      }
+
+      .cls-1, .cls-2 {
+        stroke: black;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 7px;
+      }
+    </style>
+  </defs>
+  <rect class="cls-1" x="3.5" y="3.5" width="85.039" height="283.465" rx="8.504" ry="8.504"/>
+  <path class="cls-1" d="m97.043,3.5h49.134c4.693,0,8.504,3.81,8.504,8.504v104.882h-66.142V12.004c0-4.693,3.81-8.504,8.504-8.504Z"/>
+  <path class="cls-1" d="m220.823,116.886h66.142v161.575c0,4.693-3.81,8.504-8.504,8.504h-49.134c-4.693,0-8.504-3.81-8.504-8.504V116.886h0Z"/>
+  <path class="cls-1" d="m154.681,116.886h66.142v161.575c0,4.693-3.81,8.504-8.504,8.504h-49.134c-4.693,0-8.504-3.81-8.504-8.504V116.886h0Z"/>
+  <path class="cls-1" d="m88.539,116.886h66.142v161.575c0,4.693-3.81,8.504-8.504,8.504h-49.134c-4.693,0-8.504-3.81-8.504-8.504V116.886h0Z"/>
+  <path class="cls-1" d="m163.185,3.5h49.134c4.693,0,8.504,3.81,8.504,8.504v104.882h-66.142V12.004c0-4.693,3.81-8.504,8.504-8.504Z"/>
+  <path class="cls-1" d="m229.327,3.5h49.134c4.693,0,8.504,3.81,8.504,8.504v104.882h-66.142V12.004c0-4.693,3.81-8.504,8.504-8.504Z"/>
+  <line class="cls-1" x1="88.539" y1="116.886" x2="3.5" y2="116.886"/>
+  <rect class="cls-1" x="31.846" y="159.406" width="28.346" height="28.346"/>
+  <rect class="cls-1" x="31.846" y="216.098" width="28.346" height="28.346"/>
+  <rect class="cls-1" x="114.524" y="31.846" width="14.173" height="56.693"/>
+  <rect class="cls-1" x="180.665" y="31.846" width="14.173" height="56.693"/>
+  <rect class="cls-1" x="246.807" y="31.846" width="14.173" height="56.693"/>
+  <circle class="cls-2" cx="111.69" cy="186.335" r="4.252"/>
+  <circle class="cls-2" cx="131.532" cy="166.492" r="4.252"/>
+  <circle class="cls-2" cx="111.69" cy="166.492" r="4.252"/>
+  <circle class="cls-2" cx="131.531" cy="146.65" r="4.252"/>
+  <circle class="cls-2" cx="111.689" cy="146.65" r="4.252"/>
+  <circle class="cls-2" cx="131.531" cy="206.177" r="4.252"/>
+  <circle class="cls-2" cx="111.688" cy="206.177" r="4.252"/>
+  <circle class="cls-2" cx="131.532" cy="186.335" r="4.252"/>
+  <circle class="cls-2" cx="177.831" cy="186.335" r="4.252"/>
+  <circle class="cls-2" cx="197.674" cy="166.492" r="4.252"/>
+  <circle class="cls-2" cx="177.831" cy="166.492" r="4.252"/>
+  <circle class="cls-2" cx="197.673" cy="146.65" r="4.252"/>
+  <circle class="cls-2" cx="177.83" cy="146.65" r="4.252"/>
+  <circle class="cls-2" cx="197.672" cy="206.177" r="4.252"/>
+  <circle class="cls-2" cx="177.83" cy="206.177" r="4.252"/>
+  <circle class="cls-2" cx="197.674" cy="186.335" r="4.252"/>
+  <circle class="cls-2" cx="243.973" cy="186.335" r="4.252"/>
+  <circle class="cls-2" cx="263.816" cy="166.492" r="4.252"/>
+  <circle class="cls-2" cx="243.973" cy="166.492" r="4.252"/>
+  <circle class="cls-2" cx="263.815" cy="146.65" r="4.252"/>
+  <circle class="cls-2" cx="243.972" cy="146.65" r="4.252"/>
+  <circle class="cls-2" cx="263.814" cy="206.177" r="4.252"/>
+  <circle class="cls-2" cx="243.972" cy="206.177" r="4.252"/>
+  <circle class="cls-2" cx="131.532" cy="257.201" r="4.252"/>
+  <circle class="cls-2" cx="111.689" cy="257.201" r="4.252"/>
+  <circle class="cls-2" cx="197.673" cy="257.201" r="4.252"/>
+  <circle class="cls-2" cx="177.831" cy="257.201" r="4.252"/>
+  <circle class="cls-2" cx="263.815" cy="257.201" r="4.252"/>
+  <circle class="cls-2" cx="243.973" cy="257.201" r="4.252"/>
+  <circle class="cls-2" cx="263.816" cy="186.335" r="4.252"/>
+  <line class="cls-1" x1="107.437" y1="231.689" x2="135.783" y2="231.689"/>
+  <line class="cls-1" x1="31.846" y1="31.846" x2="60.193" y2="31.846"/>
+  <line class="cls-1" x1="173.579" y1="231.689" x2="201.925" y2="231.689"/>
+  <line class="cls-1" x1="239.72" y1="231.689" x2="268.067" y2="231.689"/>
+</svg>

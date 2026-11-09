@@ -1,0 +1,65 @@
+{
+  "influxdb": {
+    "host": "$INFLUXDB_HOST",
+    "port": "$INFLUXDB_PORT",
+    "token": "$INFLUX_TOKEN",
+    "org": "$INFLUXDB_ORG",
+    "database": "$INFLUXDB_DATABASE"
+  },
+  "postgres": {
+    "host": "$POSTGRES_HOST",
+    "port": "$POSTGRES_PORT",
+    "user": "$POSTGRES_USER",
+    "password": "$POSTGRES_PASSWORD",
+    "database": "$POSTGRES_DATABASE"
+  },
+  "api": {
+    "port": "$API_PORT",
+    "admin_api_key": "$ADMIN_API_KEY"
+  },
+  "cache": {
+    "stations_ttl_seconds": 60,
+    "anomalies_ttl_seconds": 20
+  },
+  "health": {
+    "pcap_recorder_host": "$PCAP_RECORDER_HOST",
+    "pcap_recorder_port": 9090,
+    "otalon_scan_host": "$OTALON_SCAN_HOST",
+    "otalon_scan_port": "$OTALON_SCAN_PORT",
+    "mcp_host": "$MCP_HOST",
+    "mcp_port": "$MCP_PORT",
+    "otalon_clas_container_name": "otalon-clas",
+    "check_timeout_s": 3.0
+  },
+  "admin": {
+    "compose_image": "docker:24.0.9-cli",
+    "compose_file": "$COMPOSE_FILE",
+    "env_compose_path": "$ENV_COMPOSE_PATH"
+  },
+  "operations": {
+    "pipeline_poll_interval_seconds": "$PIPELINE_POLL_INTERVAL_SECONDS",
+    "pipeline_lookback_hours": "$PIPELINE_LOOKBACK_HOURS",
+    "backup_dir": "$BACKUP_DIR",
+    "backup_config_source": "$BACKUP_CONFIG_SOURCE",
+    "backup_postgres_source": "$BACKUP_POSTGRES_SOURCE",
+    "model_dir": "$MODEL_DIR",
+    "pcap_baseline_dir": "$PCAP_BASELINE_DIR",
+    "pcap_archive_dir": "$PCAP_ARCHIVE_DIR",
+    "pcap_config_path": "$PCAP_CONFIG_PATH"
+  },
+  "host": {
+    "storage_root": "$HOST_STORAGE_ROOT",
+    "storage_home": "$HOST_STORAGE_HOME",
+    "storage_var": "$HOST_STORAGE_VAR",
+    "influx_data_path": "$HOST_INFLUX_DATA_PATH",
+    "postgres_data_path": "$HOST_POSTGRES_DATA_PATH",
+    "log_path": "$HOST_LOG_PATH"
+  },
+  "topology": {
+    "subnet_protocols_lookback_hours": 168
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "$API_LOG_FILE"
+  }
+}

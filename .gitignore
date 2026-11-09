@@ -1,0 +1,59 @@
+# Excluded workspace tooling and legacy/private material
+/.dev/
+/.tools/
+/.kilo/
+/.opencode/
+/.hermes/
+/.hermes-local/
+/openspec/
+/graphify-out/
+/documentation/
+/tests/
+/shared/
+/.export/
+
+# Local environments and secret-bearing variants; publish only the root template
+/.env*
+**/.env
+**/.env.*
+**/.envrc
+**/*.env
+**/*.env.*
+# Keep this negation after every env glob so the root template stays tracked.
+!/.env.compose.sample
+
+# Dependencies, virtual environments, generated output, caches and logs
+node_modules/
+/otalon-ui/home/
+.npm/
+# The UI intentionally does not track a lockfile (see otalon-ui/Dockerfile).
+/otalon-ui/package-lock.json
+.venv*/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.nuxt/
+.output/
+dist/
+build/
+cmake-build-*/
+*.log
+*.log.*
+*.tmp
+*.swp
+*.swo
+*.bak
+*.orig
+*.rej
+*~
+.DS_Store
+Thumbs.db

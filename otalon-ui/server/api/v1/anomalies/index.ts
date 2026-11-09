@@ -1,0 +1,13 @@
+/**
+ * Bare-path handler for `/api/v1/anomalies` (no trailing segment).
+ *
+ * The `[...path].ts` catch-all only matches paths WITH at least one segment
+ * after the prefix; a request to exactly `/api/v1/anomalies` falls through to
+ * the SPA fallback otherwise (HTTP 200 HTML instead of JSON). Mirrors the
+ * `scans/index.ts` / `alerts/index.ts` pattern — the operator key is injected
+ * so keyed reads behave identically to keyed mutations.
+ */
+
+import { proxyOperatorSubtree } from '~~/server/utils/operatorProxy'
+
+export default defineEventHandler(async (event) => proxyOperatorSubtree(event, '/api/v1/anomalies'))

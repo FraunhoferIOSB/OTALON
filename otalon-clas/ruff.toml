@@ -1,0 +1,7 @@
+line-length = 120
+
+[lint]
+select = ["E", "F", "I"]
+
+[lint.isort]
+known-first-party = ["otalon_clas", "otalon_clas_next"]

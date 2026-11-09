@@ -1,0 +1,190 @@
+// Design Tokens — OTALON UI (ICS/OT Dashboard Palette)
+// Teal/Cyan primary for ICS-typical look, strong alarm colors
+
+// =============================================================================
+// OTALON Mark Colors
+// =============================================================================
+// Taken verbatim from the marketing assets in public/images/. The ink switches
+// per theme (otalon-wordmark.svg vs otalon-wordmark-dark.svg); accent and alert
+// are identical in both files and therefore theme-independent.
+$otalon-ink-light: #15333a;
+$otalon-ink-dark: #e0e0e0;
+$otalon-accent: #168f87;
+$otalon-alert: #ef5350;
+
+// =============================================================================
+// Brand Colors (Fraunhofer)
+// =============================================================================
+$fhg-green: #179c7d;
+$fhg-green-light: #b2d235;
+$fhg-orange: #f58220;
+$fhg-red: #c00000;
+$fhg-light-blue: #a6bbc8;
+$fhg-primary-blue: #00838f;
+
+// =============================================================================
+// Semantic Colors
+// =============================================================================
+$color-danger: #d32f2f;
+$color-warning: #f59e0b;
+$color-success: #16a34a;
+$color-info: #00838f;
+
+// =============================================================================
+// Light Theme Colors
+// =============================================================================
+$light-primary: #00838f;
+$light-primary-text: #ffffff;
+$light-surface: #e8eef1;
+$light-surface-text: #1a1a1a;
+$light-background: #f5f7f8;
+$light-muted: #607d8b;
+$light-border: #b0bec5;
+$light-table-row-even: #ecf0f3;
+$light-table-row-odd: #f5f7f8;
+
+// =============================================================================
+// Dark Theme Colors
+// =============================================================================
+$dark-primary: #26a69a;
+$dark-primary-text: #e0e0e0;
+$dark-surface: #1e1e1e;
+$dark-surface-text: #e0e0e0;
+$dark-background: #141414;
+$dark-muted: #90a4ae;
+$dark-border: #2a2a2a;
+$dark-table-row-even: #1e1e1e;
+$dark-table-row-odd: #181818;
+$dark-header-bg: #0d0d0d;
+
+// =============================================================================
+// Plot Colors (Light)
+// =============================================================================
+$plot-bg-light: #f5f7f8;
+$plot-text-light: #37474f;
+$plot-grid-light: #cfd8dc;
+$plot-normal-light: #37474f;
+$plot-boundary-light: #16a34a;
+$plot-anomaly-light: #d32f2f;
+$plot-envelope-light: rgba(21, 74, 118, 0.636);
+$plot-alarm-unconfirmed-light: #d32f2f;
+$plot-alarm-confirmed-light: #16a34a;
+
+// =============================================================================
+// Plot Colors (Dark)
+// =============================================================================
+$plot-bg-dark: #1a1a1a;
+$plot-text-dark: #e0e0e0;
+$plot-grid-dark: #333333;
+$plot-normal-dark: #80cbc4;
+$plot-boundary-dark: #26a69a;
+$plot-anomaly-dark: #ef5350;
+$plot-envelope-dark: rgba(66, 173, 152, 0.636);
+$plot-alarm-unconfirmed-dark: #ef5350;
+$plot-alarm-confirmed-dark: #66bb6a;
+
+// =============================================================================
+// Plot Colors (Chart Lines)
+// =============================================================================
+$plot-line-light: #005b7f;
+$plot-line-dark: #4fc3f7;
+$plot-bounds-upper-light: #118046;
+$plot-bounds-upper-dark: #26a69a;
+$plot-bounds-lower-light: #118046;
+$plot-bounds-lower-dark: #26a69a;
+$plot-area-light: rgba(17, 128, 70, 0.15);
+$plot-area-dark: rgba(38, 166, 154, 0.15);
+$plot-anomaly-fill-light: rgba(255, 77, 77, 0.18);
+$plot-anomaly-fill-dark: rgba(255, 77, 77, 0.22);
+
+// =============================================================================
+// Status Colors
+// =============================================================================
+$status-running: #16a34a;
+$status-stopped: #6b7280;
+$status-error: #d32f2f;
+$status-missing: #9ca3af;
+
+// =============================================================================
+// UI Utility Colors (Light)
+// =============================================================================
+$ui-divider-light: #cfd8dc;
+$ui-text-muted-light: #607d8b;
+$ui-border-muted-light: #90a4ae;
+
+// =============================================================================
+// UI Utility Colors (Dark)
+// =============================================================================
+$ui-divider-dark: #2a2a2a;
+$ui-text-muted-dark: #90a4ae;
+$ui-border-muted-dark: #3a3a3a;
+
+// =============================================================================
+// Graph / Topology Colors
+// =============================================================================
+$graph-edge-light: #546e7a;
+$graph-edge-active-light: #00838f;
+$graph-node-default-light: #b2dfdb;
+$graph-node-faded-light: #cfd8dc;
+
+$graph-edge-dark: #546e7a;
+$graph-edge-active-dark: #26a69a;
+$graph-node-default-dark: #2a3a3a;
+$graph-node-faded-dark: #1e1e1e;
+
+// =============================================================================
+// Topology Device Type Colors
+// =============================================================================
+$topo-plc: #42a5f5;
+$topo-ipc: #ab47bc;
+$topo-io: #ffa726;
+$topo-other: #78909c;
+$topo-anomaly: #ef5350;
+$topo-anomaly-border: #b71c1c;
+$topo-selection-border: #ffd54f;
+
+// =============================================================================
+// Sidebar (Dark Override)
+// =============================================================================
+$dark-sidebar-bg: #111111;
+
+// =============================================================================
+// Spacing
+// =============================================================================
+$spacing-xs: 4px;
+$spacing-sm: 8px;
+$spacing-md: 16px;
+$spacing-lg: 24px;
+$spacing-xl: 32px;
+
+// =============================================================================
+// Typography
+// =============================================================================
+$font-family-base: 'Calibri', 'Helvetica Neue', Arial, sans-serif;
+$font-family-mono: 'Roboto Mono', 'Consolas', 'Courier New', monospace;
+$font-size-base: 14px;
+$font-size-sm: 12px;
+$font-size-lg: 16px;
+$font-size-xl: 20px;
+$font-size-h1: 28px;
+$font-size-h2: 24px;
+$font-size-h3: 20px;
+
+// =============================================================================
+// Border Radius
+// =============================================================================
+$border-radius-none: 0px;
+$border-radius-sm: 2px;
+$border-radius-md: 4px;
+$border-radius-lg: 8px;
+$border-radius-pill: 9999px;
+
+// =============================================================================
+// Shadows
+// =============================================================================
+$shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+$shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
+$shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
+$shadow-dark-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+$shadow-dark-md: 0 2px 8px rgba(0, 0, 0, 0.4);
+$shadow-dark-lg: 0 4px 16px rgba(0, 0, 0, 0.5);

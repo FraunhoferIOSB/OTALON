@@ -1,0 +1,118 @@
+{
+  "_comment": "Synthetic NVD envelopes for the SCALANCE XC208G @ V4.3.1 CVE false-positive audit (SCAN-027). Product lists and version ranges mirror the real NVD verdicts recorded in .dev/runtime/nvd_audit_v3.tsv / cve-falsepositive-audit.md. Each envelope deliberately bundles our product's (or its generic XC-200 family) CPE together with genuine sibling-product CPEs that carry their OWN, looser fix-version ranges so the cross-product false-positive (a sibling range marking us vulnerable) is exercised.",
+  "vulnerabilities": [
+    {
+      "_verdict": "FALSE-POS: only generic xc-200, fix 4.1, V4.3.1 newer; sibling m-800/rm1224 looser ranges must NOT leak in",
+      "cve": {
+        "id": "CVE-2019-6569",
+        "configurations": [
+          {
+            "nodes": [
+              {
+                "cpeMatch": [
+                  {"vulnerable": true, "criteria": "cpe:2.3:o:siemens:scalance_xc-200_firmware:*:*:*:*:*:*:*:*", "versionEndExcluding": "4.1"},
+                  {"vulnerable": true, "criteria": "cpe:2.3:o:siemens:scalance_m-800_firmware:*:*:*:*:*:*:*:*", "versionEndExcluding": "6.4"},
+                  {"vulnerable": true, "criteria": "cpe:2.3:o:siemens:ruggedcom_rm1224_firmware:*:*:*:*:*:*:*:*", "versionEndExcluding": "6.4"}
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "_verdict": "FALSE-POS: only generic xc-200, fix 4.3, V4.3.1 > 4.3",
+      "cve": {
+        "id": "CVE-2020-28400",
+        "configurations": [
+          {
+            "nodes": [
+              {
+                "cpeMatch": [
+                  {"vulnerable": true, "criteria": "cpe:2.3:o:siemens:scalance_xc-200_firmware:*:*:*:*:*:*:*:*", "versionEndExcluding": "4.3"},
+                  {"vulnerable": true, "criteria": "cpe:2.3:o:siemens:scalance_xm-400_firmware:*:*:*:*:*:*:*:*", "versionEndExcluding": "6.5"}
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "_verdict": "FALSE-POS: only generic xc-200, fix 4.1, V4.3.1 newer",
+      "cve": {
+        "id": "CVE-2021-25667",
+        "configurations": [
+          {
+            "nodes": [
+              {
+                "cpeMatch": [
+                  {"vulnerable": true, "criteria": "cpe:2.3:o:siemens:scalance_xc-200_firmware:*:*:*:*:*:*:*:*", "versionEndExcluding": "4.1"},
+                  {"vulnerable": true, "criteria": "cpe:2.3:o:siemens:scalance_w1788-2_m12_firmware:*:*:*:*:*:*:*:*", "versionEndExcluding": "2.0"}
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "_verdict": "FALSE-POS: OpenSSL CVE broadly bundled; generic xc-200 fix 4.3, V4.3.1 > 4.3; many sibling products with looser ranges",
+      "cve": {
+        "id": "CVE-2021-3449",
+        "configurations": [
+          {
+            "nodes": [
+              {
+                "cpeMatch": [
+                  {"vulnerable": true, "criteria": "cpe:2.3:o:siemens:scalance_xc-200_firmware:*:*:*:*:*:*:*:*", "versionEndExcluding": "4.3"},
+                  {"vulnerable": true, "criteria": "cpe:2.3:o:siemens:scalance_m-800_firmware:*:*:*:*:*:*:*:*", "versionEndExcluding": "7.1"},
+                  {"vulnerable": true, "criteria": "cpe:2.3:o:siemens:scalance_sc-600_firmware:*:*:*:*:*:*:*:*", "versionEndExcluding": "2.1.3"},
+                  {"vulnerable": true, "criteria": "cpe:2.3:o:siemens:ruggedcom_rox_mx5000_firmware:*:*:*:*:*:*:*:*", "versionEndExcluding": "2.14.0"}
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "_verdict": "TRUE: exact xc208g, range *..5.2.5, V4.3.1 < 5.2.5",
+      "cve": {
+        "id": "CVE-2020-15800",
+        "configurations": [
+          {
+            "nodes": [
+              {
+                "cpeMatch": [
+                  {"vulnerable": true, "criteria": "cpe:2.3:o:siemens:scalance_xc208_firmware:*:*:*:*:*:*:*:*", "versionEndExcluding": "5.2.5"},
+                  {"vulnerable": true, "criteria": "cpe:2.3:o:siemens:scalance_xc208g_firmware:*:*:*:*:*:*:*:*", "versionEndExcluding": "5.2.5"},
+                  {"vulnerable": true, "criteria": "cpe:2.3:o:siemens:scalance_xc216_firmware:*:*:*:*:*:*:*:*", "versionEndExcluding": "5.2.5"},
+                  {"vulnerable": true, "criteria": "cpe:2.3:o:siemens:scalance_m-800_firmware:*:*:*:*:*:*:*:*", "versionEndExcluding": "6.4"}
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "_verdict": "TRUE-generic: only xc-200, range 3.0..*, V4.3.1 >= 3.0",
+      "cve": {
+        "id": "CVE-2017-12736",
+        "configurations": [
+          {
+            "nodes": [
+              {
+                "cpeMatch": [
+                  {"vulnerable": true, "criteria": "cpe:2.3:o:siemens:scalance_xc-200_firmware:*:*:*:*:*:*:*:*", "versionStartIncluding": "3.0"},
+                  {"vulnerable": true, "criteria": "cpe:2.3:o:siemens:ruggedcom_rm1224_firmware:*:*:*:*:*:*:*:*", "versionStartIncluding": "3.0"}
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

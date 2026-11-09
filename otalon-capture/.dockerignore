@@ -1,0 +1,33 @@
+# Reduce build context size
+.debug/
+logs/
+evaluation/
+tests/
+.git/
+.git/**
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+*.log
+nohup.out
+
+# Build/cache artifacts
+*.egg-info/
+.eggs/
+build/
+dist/
+.build/
+.pytest_cache/
+.mypy_cache/
+coverage/
+.coverage
+htmlcov/
+
+# Docs and meta not needed at runtime
+README.md
+.pre-commit-config.yaml
+pyproject.toml

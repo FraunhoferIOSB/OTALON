@@ -1,0 +1,118 @@
+{
+  "influx": {
+    "host": "$INFLUX_URL",
+    "token": "$INFLUX_TOKEN",
+    "database": "netcap",
+    "measurement_name": "network_metrics",
+    "tags": ["uci"],
+    "fields": {
+      "packet_count": "get_total_packet_count",
+      "total_volume": "get_total_volume",
+      "mean_packet_size": "get_mean_packet_size",
+      "min_packet_size": "get_min_packet_size",
+      "max_packet_size": "get_max_packet_size",
+      "std_packet_size": "get_sd_packet_size",
+      "mean_interarrival_time": "get_mean_packet_inter_arrival_time",
+      "min_interarrival_time": "get_min_packet_inter_arrival_time",
+      "max_interarrival_time": "get_max_packet_inter_arrival_time",
+      "std_interarrival_time": "get_sd_packet_inter_arrival_time",
+      "collapsed_port_count": "get_collapsed_port_count"
+    }
+  },
+  "capture": {
+    "source": "$CAPTURE_SOURCE",
+    "type": "$CAPTURE_TYPE",
+    "interval": 1000
+  },
+  "preprocess": {
+    "aggregate_sparse_ports": true,
+    "max_packet_count_single": 3,
+    "emit_interval_ms": 1000
+  },
+  "write_options": {
+    "batch_size": 10000,
+    "flush_interval": 5000,
+    "jitter_interval": 100,
+    "precision": "ms"
+  },
+  "log": {
+    "level": "INFO",
+    "file": "$NETCAP_LOG_FILE",
+    "verbose": false
+  },
+  "pcap": {
+    "buffer_directory": "$PCAP_BUFFER_DIR",
+    "archive_directory": "$PCAP_ARCHIVE_DIR"
+  },
+  "mac_aggregation": {
+    "enabled": true,
+    "emit_interval_ms": 1000
+  },
+  "proto_aggregation": {
+    "enabled": true,
+    "emit_interval_ms": 1000
+  },
+  "mac_influx": {
+    "host": "$INFLUX_URL",
+    "token": "$INFLUX_TOKEN",
+    "database": "netcap",
+    "measurement_name": "mac_traffic",
+    "tags": ["mac_address", "dominant_protocol"],
+    "fields": {
+      "out_conn_count": "get_out_conn_count",
+      "out_total_packets": "get_out_total_packets",
+      "out_total_volume": "get_out_total_volume",
+      "out_mean_packet_size": "get_out_mean_packet_size",
+      "out_std_packet_size": "get_out_std_packet_size",
+      "out_min_packet_size": "get_out_min_packet_size",
+      "out_max_packet_size": "get_out_max_packet_size",
+      "out_mean_interarrival": "get_out_mean_interarrival",
+      "out_std_interarrival": "get_out_std_interarrival",
+      "out_unique_dst_count": "get_out_unique_dst_count",
+      "out_unique_proto_count": "get_out_unique_proto_count",
+      "in_conn_count": "get_in_conn_count",
+      "in_total_packets": "get_in_total_packets",
+      "in_total_volume": "get_in_total_volume",
+      "in_mean_packet_size": "get_in_mean_packet_size",
+      "in_std_packet_size": "get_in_std_packet_size",
+      "in_min_packet_size": "get_in_min_packet_size",
+      "in_max_packet_size": "get_in_max_packet_size",
+      "in_mean_interarrival": "get_in_mean_interarrival",
+      "in_std_interarrival": "get_in_std_interarrival",
+      "in_unique_src_count": "get_in_unique_src_count",
+      "in_unique_proto_count": "get_in_unique_proto_count",
+      "ratio_in_out_packets": "get_ratio_in_out_packets",
+      "ratio_in_out_volume": "get_ratio_in_out_volume",
+      "total_conn_count": "get_total_conn_count",
+      "total_unique_peers": "get_total_unique_peers"
+    }
+  },
+  "proto_influx": {
+    "host": "$INFLUX_URL",
+    "token": "$INFLUX_TOKEN",
+    "database": "netcap",
+    "measurement_name": "proto_traffic",
+    "tags": ["protocol"],
+    "fields": {
+      "proto_conn_count": "get_proto_conn_count",
+      "proto_total_packets": "get_proto_total_packets",
+      "proto_total_volume": "get_proto_total_volume",
+      "proto_mean_packet_size": "get_proto_mean_packet_size",
+      "proto_std_packet_size": "get_proto_std_packet_size",
+      "proto_min_packet_size": "get_proto_min_packet_size",
+      "proto_max_packet_size": "get_proto_max_packet_size",
+      "proto_range_packet_size": "get_proto_range_packet_size",
+      "proto_mean_interarrival": "get_proto_mean_interarrival",
+      "proto_std_interarrival": "get_proto_std_interarrival",
+      "proto_min_interarrival": "get_proto_min_interarrival",
+      "proto_max_interarrival": "get_proto_max_interarrival",
+      "proto_unique_src_mac": "get_proto_unique_src_mac",
+      "proto_unique_dst_mac": "get_proto_unique_dst_mac",
+      "proto_unique_mac_pairs": "get_proto_unique_mac_pairs",
+      "proto_mean_packets_per_conn": "get_proto_mean_packets_per_conn",
+      "proto_std_packets_per_conn": "get_proto_std_packets_per_conn",
+      "proto_mean_volume_per_conn": "get_proto_mean_volume_per_conn"
+    }
+  },
+  "protocol_map": {}
+}

@@ -1,0 +1,60 @@
+// Dark Theme — OTALON
+// ICS/OT Dashboard palette: dark grays with teal/cyan accents
+
+@use '../tokens' as *;
+
+.body--dark {
+  --cd-primary: #{$dark-primary};
+  --cd-primary-text: #{$dark-primary-text};
+  --cd-primary-rgb: 77, 208, 225;
+  --cd-surface: #{$dark-surface};
+  --cd-surface-text: #{$dark-surface-text};
+  --cd-background: #{$dark-background};
+  --cd-border: #{$dark-border};
+  --cd-muted: #{$dark-muted};
+  --cd-info: #4dd0e1;
+  --cd-table-row-even: #{$dark-table-row-even};
+  --cd-table-row-odd: #{$dark-table-row-odd};
+
+  --cd-plot-bg: #{$plot-bg-dark};
+  --cd-plot-text: #{$plot-text-dark};
+  --cd-plot-grid: #{$plot-grid-dark};
+  --cd-plot-normal: #{$plot-normal-dark};
+  --cd-plot-boundary: #{$plot-boundary-dark};
+  --cd-plot-anomaly: #{$plot-anomaly-dark};
+  --cd-plot-envelope: #{$plot-envelope-dark};
+  --cd-plot-line: #{$plot-line-dark};
+  --cd-plot-area: #{$plot-area-dark};
+  --cd-plot-bounds-upper: #{$plot-bounds-upper-dark};
+  --cd-plot-bounds-lower: #{$plot-bounds-lower-dark};
+  --cd-plot-anomaly-fill: #{$plot-anomaly-fill-dark};
+
+  --cd-ui-divider: #{$ui-divider-dark};
+  --cd-ui-text-muted: #{$ui-text-muted-dark};
+  --cd-ui-border-muted: #{$ui-border-muted-dark};
+
+  --cd-graph-edge: #{$graph-edge-dark};
+  --cd-graph-edge-active: #{$graph-edge-active-dark};
+  --cd-graph-node-default: #{$graph-node-default-dark};
+  --cd-graph-node-faded: #{$graph-node-faded-dark};
+
+  --cd-topo-plc: #{$topo-plc};
+  --cd-topo-ipc: #{$topo-ipc};
+  --cd-topo-io: #{$topo-io};
+  --cd-topo-other: #{$topo-other};
+  --cd-topo-anomaly: #{$topo-anomaly};
+  --cd-topo-anomaly-border: #{$topo-anomaly-border};
+  --cd-topo-selection-border: #{$topo-selection-border};
+
+  --cd-danger-rgb: 239, 83, 80;
+  --cd-warning-rgb: 255, 183, 77;
+  --cd-success-rgb: 102, 187, 106;
+  --cd-info-rgb: 77, 208, 225;
+
+  --cd-shadow-sm: #{$shadow-dark-sm};
+  --cd-shadow-md: #{$shadow-dark-md};
+  --cd-shadow-lg: #{$shadow-dark-lg};
+
+  background-color: $dark-background;
+  color: $dark-surface-text;
+}

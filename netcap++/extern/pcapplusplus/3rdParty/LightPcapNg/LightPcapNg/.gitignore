@@ -1,0 +1,15 @@
+*.o
+*.zip
+*.gch
+*.test
+*.pcapng
+*.data
+*.old
+*.a
+*.so
+*.cap
+*.ntar
+*.log
+*.cmake
+# Required source module retained by the public native-fork import.
+!cmake/FindZSTD.cmake

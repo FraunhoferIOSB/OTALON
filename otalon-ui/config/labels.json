@@ -1,0 +1,14 @@
+{
+  "netcap": {
+    "packet_count": "Packet Count",
+    "total_volume": "Total Volume (Bytes)",
+    "mean_packet_size": "Mean Packet Size",
+    "min_packet_size": "Min. Packet Size",
+    "max_packet_size": "Max. Packet Size",
+    "std_packet_size": "Std. Packet Size",
+    "mean_interarrival_time": "Mean Interarrival Time (ms)",
+    "min_interarrival_time": "Min Interarrival Time (ms)",
+    "max_interarrival_time": "Max Interarrival Time (ms)",
+    "std_interarrival_time": "Std Interarrival Time (ms)"
+  }
+}

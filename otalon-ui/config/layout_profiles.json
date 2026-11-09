@@ -1,0 +1,14 @@
+{
+  "grid_2n": {
+    "columns": 2,
+    "min_plot_height": 200
+  },
+  "single_1n": {
+    "columns": 1,
+    "min_plot_height": 320
+  },
+  "tabs": {
+    "columns": 1,
+    "min_plot_height": 220
+  }
+}

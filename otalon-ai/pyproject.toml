@@ -1,0 +1,72 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "otalon-ai"
+version = "0.1.0"
+description = "Consolidated chat orchestration + subagent classification jobs service for the OTALON suite."
+requires-python = ">=3.13"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 120
+target-version = ["py313"]
+
+[tool.isort]
+profile = "black"
+line_length = 120
+known_first_party = ["otalon_ai"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unused_ignores = true
+warn_return_any = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+# Third-party packages without first-party type stubs. ``psycopg2`` has
+# ``types-psycopg2`` available but it is incomplete and adding it pulls
+# new mypy errors in unrelated files; the workspace convention is to
+# treat psycopg2 as untyped at the boundary and rely on local Pydantic
+# / dataclass wrappers for safety.
+module = ["mcp.*", "sse_starlette.*", "psycopg2", "psycopg2.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+# ``src`` on the path so ``otalon_ai`` resolves without an editable install.
+# Before SUITE-032 the flat ``src.``-rooted imports resolved via rootdir
+# insertion; the package now lives one level deeper, so the root has to be
+# named explicitly.
+pythonpath = ["src"]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "unit: fast unit tests with no external dependencies",
+    "integration: integration tests that may spin up a FastAPI app or hit a DB",
+]
+# Coverage gating. Cluster e (HC2 boundary-mocked unit tests for the
+# jobs surface) raised the floor from 50 % to 75 % once tests for
+# classify_alarm, WorkerPool, the jobs REST endpoints, the Postgres repo
+# and the events bus landed. The measured baseline after Cluster e is
+# ~79 %; the gate is pegged at 75 % so trivial drift (e.g. one new
+# untested branch) does not break the build.
+addopts = "-ra -q --cov=otalon_ai --cov-report=term-missing --cov-fail-under=75"
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.ruff.lint.isort]
+# SUITE-032 retired the previous ``known-first-party = ["mcp", "src"]``
+# workaround: the local package used to live at ``src/mcp/`` and shadowed the
+# third-party ``mcp`` distribution, so both classifiers had to be told to
+# treat the bare name ``mcp`` as first-party. It is now ``otalon_ai/mcp/``,
+# which cannot collide, and ``mcp`` is unambiguously third-party again.
+known-first-party = ["otalon_ai"]

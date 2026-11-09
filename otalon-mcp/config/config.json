@@ -1,0 +1,54 @@
+{
+  "server": {
+    "name": "otalon-mcp",
+    "host": "0.0.0.0",
+    "port": 9000,
+    "transport": "streamable-http",
+    "force_timeout_seconds": 8
+  },
+  "postgres": {
+    "dsn": "$POSTGRES_DSN"
+  },
+  "influx": {
+    "url": "$INFLUX_URL",
+    "token": "$INFLUX_TOKEN",
+    "database": "netcap",
+    "measurement": "network_metrics",
+    "id_tag": "uci",
+    "fields": [
+      "packet_count",
+      "total_volume",
+      "mean_packet_size",
+      "min_packet_size",
+      "max_packet_size",
+      "std_packet_size",
+      "mean_interarrival_time",
+      "min_interarrival_time",
+      "max_interarrival_time",
+      "std_interarrival_time"
+    ]
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "$MCP_LOG_FILE"
+  },
+  "pcap_recorder": {
+    "url": "$PCAP_RECORDER_URL",
+    "timeout_seconds": 30
+  },
+  "baseline": {
+    "directory": "/app/pcap/baseline"
+  },
+  "agent": {
+    "url": "",
+    "timeout_seconds": 5
+  },
+  "otalon_api": {
+    "url": "http://otalon-api:8090",
+    "timeout_seconds": 10,
+    "confirm_nonce_ttl_seconds": 300
+  },
+  "mitre": {
+    "stix_bundle_path": "data/ics-attack.json"
+  }
+}

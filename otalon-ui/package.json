@@ -1,0 +1,60 @@
+{
+  "name": "otalon-ui",
+  "type": "module",
+  "private": true,
+  "packageManager": "npm@11.6.2",
+  "engines": {
+    "node": ">=22.22.3 <23",
+    "npm": "11.6.2"
+  },
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "lint": "eslint .",
+    "typecheck": "node scripts/typecheck.mjs",
+    "typecheck:raw": "vue-tsc --build --force tsconfig.json"
+  },
+  "dependencies": {
+    "@pinia/nuxt": "0.11.3",
+    "@quasar/extras": "^1.17.0",
+    "@types/dompurify": "^3.2.0",
+    "@vueuse/core": "14.2.1",
+    "@vueuse/nuxt": "14.2.1",
+    "dompurify": "^3.4.2",
+    "echarts": "^6.0.0",
+    "grid-layout-plus": "1.1.1",
+    "marked": "^18.0.3",
+    "nuxt": "4.6.4",
+    "nuxt-quasar-ui": "^3.0.1",
+    "pinia": "^3.0.4",
+    "pino": "^9.6.0",
+    "quasar": "^2.19.0",
+    "vue": "3.5.45",
+    "vue-router": "5.0.4"
+  },
+  "devDependencies": {
+    "@nuxt/eslint-config": "1.15.2",
+    "@pinia/testing": "^1.0.3",
+    "@playwright/test": "^1.58.2",
+    "@vitejs/plugin-vue": "6.0.5",
+    "@vue/test-utils": "^2.4.6",
+    "eslint": "^9.39.4",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "14.0.0",
+    "happy-dom": "21.0.4",
+    "jsdom": "31.0.0",
+    "msw": "^2.12.14",
+    "playwright": "^1.58.2",
+    "prettier": "^3.8.1",
+    "sass-embedded": "^1.98.0",
+    "typescript": "^5.9.3",
+    "vite": "7.3.8",
+    "vitest": "4.1.1",
+    "vue-tsc": "^3.0.5"
+  }
+}

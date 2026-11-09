@@ -1,0 +1,84 @@
+# CyberScan-ICS runtime dependencies
+#
+# F-02 (refactor-otalon-scan-code-quality-v1) — exact-version pinning per
+# the ``scan--dependency-management`` capability. Every entry uses ``==``;
+# no ``>=``, ``~=``, ``>``, or unversioned lines are permitted.
+#
+# Regeneration procedure (see README.md "Updating dependencies"):
+#
+#   source ../.venv313/bin/activate
+#   pip install -r requirements.txt
+#   pip freeze --exclude-editable | sort > /tmp/freeze.txt
+#   # then update the version numbers below from /tmp/freeze.txt for the
+#   # direct dependencies listed here. Transitive packages are intentionally
+#   # omitted: pip resolves them deterministically from the direct pins.
+#
+# Notes:
+# - Compatible with Python 3.13 (workspace containers).
+# - Async DB stack only — asyncpg is the sole PostgreSQL driver
+#   (D1 resolved 2026-05-17, HC5 closed in
+#   refactor-otalon-scan-async-and-orchestrator-persistence).
+# - Schema migrations are owned by alembic (F-01 task 2.1).
+
+# --- Web framework / ASGI ---
+fastapi==0.135.1
+uvicorn[standard]==0.42.0
+sse-starlette==3.0.3
+
+# --- Database (async-only) ---
+SQLAlchemy==2.0.44
+asyncpg==0.31.0
+alembic==1.13.3
+# Alembic's existing env.py uses SQLAlchemy's synchronous engine.
+psycopg2-binary==2.9.11
+
+# --- Shared suite library ---
+# passive-seeder-runtime-control: the runtime-configuration registry,
+# validator factories, and static key manifest live in otalon-common.
+# The package is NOT published to an index; the Dockerfile installs it from
+# the repo-root build context BEFORE this file is processed, so the pin below
+# resolves against the already-installed distribution. The exact ``==`` form
+# is mandatory per the ``scan--dependency-management`` capability.
+otalon-common==0.1.0
+
+# --- Logging / models ---
+loguru==0.7.3
+pydantic==2.12.5
+# add-passive-asset-seeder: settings model + InfluxDB v3 client for the
+# passive_source package (separate compose service otalon-scan-passive-seeder).
+pydantic-settings==2.12.0
+influxdb3-python==0.17.0
+
+# --- Observability (F-02 / scan--observability) ---
+prometheus_client==0.25.0
+
+# --- Scanner / parsing / utilities ---
+# SCAN-029: ``scapy`` was removed. The only consumer was the PROFINET DCP
+# scanner (``src/modules/pn_discovery/``), which now builds and parses DCP
+# frames itself (``pn_discovery/dcp.py``) and transports them over a Linux
+# ``AF_PACKET`` raw socket from the standard library
+# (``pn_discovery/raw_socket.py``). ``psutil`` below already covers the
+# interface enumeration scapy was also used for.
+pandas==2.3.3
+psutil==7.1.3
+pysnmp==7.1.22
+pysmi==1.6.2
+
+# --- Optional / protocol-specific ---
+asyncua==1.1.8
+
+# --- Test and HTTP client utilities ---
+pytest==9.0.1
+pytest-asyncio==1.3.0
+pytest-mock==3.15.1
+pytest-timeout==2.4.0
+httpx==0.28.1
+asgi-lifespan==2.1.0
+# Property-based testing (D-T1, .dev/TODO_otalon-scan.md): used by
+# tests/unit/test_parsers_property.py to drive validator round-trips
+# with generated IPs, CIDRs, port ranges, timing templates.
+hypothesis==6.152.7
+# Snapshot tests (D-T2, .dev/TODO_otalon-scan.md): used by
+# tests/unit/test_snapshot_api_and_reports.py to pin the shape of API
+# response envelopes and module final-report ScanResult payloads.
+syrupy==5.2.0

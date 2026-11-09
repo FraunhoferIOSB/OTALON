@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "otalon-mcp"
+version = "0.1.0"
+description = "Model Context Protocol server exposing OTALON InfluxDB, PostgreSQL and PCAP tools."
+requires-python = ">=3.13"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 120
+target-version = ["py313"]
+
+[tool.isort]
+profile = "black"
+line_length = 120
+known_first_party = ["otalon_mcp"]
+
+# Mirrors the root ``.ruff.toml`` (line-length 120, rules E/F/I). Declared
+# here only so ruff's own isort rule (I001) classifies ``otalon_mcp`` as
+# first-party, matching the ``[tool.isort]`` block above. Without it the two
+# formatters disagree and fight over the import block on every gate run.
+[tool.ruff]
+line-length = 120
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["otalon_mcp"]
+
+[tool.pytest.ini_options]
+# ``src`` stays on the path so ``otalon_mcp`` resolves without an editable
+# install: after SUITE-032 the package root is ``src/otalon_mcp``, so ``src``
+# is the directory that must be importable-from, not the import root itself.
+pythonpath = ["src"]
+asyncio_mode = "auto"
+markers = [
+    "unit: Unit tests",
+]
+
+[tool.mypy]
+python_version = "3.13"
+mypy_path = "src"
+ignore_missing_imports = true
+explicit_package_bases = true

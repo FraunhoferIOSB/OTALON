@@ -1,0 +1,109 @@
+{
+  "colors": {
+    "brand": {
+      "fhg-green": "#179c7d",
+      "fhg-green-light": "#b2d235",
+      "fhg-orange": "#f58220",
+      "fhg-red": "#c00000",
+      "fhg-light-blue": "#a6bbc8",
+      "fhg-primary-blue": "#00838f"
+    },
+    "semantic": {
+      "danger": "#d32f2f",
+      "warning": "#f59e0b",
+      "success": "#16a34a",
+      "info": "#00838f"
+    },
+    "light": {
+      "primary": "#00838f",
+      "primary-text": "#ffffff",
+      "surface": "#e8eef1",
+      "surface-text": "#1a1a1a",
+      "background": "#f5f7f8",
+      "muted": "#607d8b",
+      "border": "#b0bec5",
+      "table-row-even": "#ecf0f3",
+      "table-row-odd": "#f5f7f8"
+    },
+    "dark": {
+      "primary": "#26a69a",
+      "primary-text": "#e0e0e0",
+      "surface": "#1e1e1e",
+      "surface-text": "#e0e0e0",
+      "background": "#141414",
+      "muted": "#90a4ae",
+      "border": "#2a2a2a",
+      "table-row-even": "#1e1e1e",
+      "table-row-odd": "#181818",
+      "header-bg": "#0d0d0d"
+    },
+    "plot": {
+      "light": {
+        "bg": "#f5f7f8",
+        "text": "#37474f",
+        "grid": "#cfd8dc",
+        "normal": "#37474f",
+        "boundary": "#16a34a",
+        "anomaly": "#d32f2f",
+        "envelope": "#5c6bc0",
+        "alarm-unconfirmed": "#d32f2f",
+        "alarm-confirmed": "#16a34a"
+      },
+      "dark": {
+        "bg": "#1a1a1a",
+        "text": "#b0bec5",
+        "grid": "#2a2a2a",
+        "normal": "#80cbc4",
+        "boundary": "#26a69a",
+        "anomaly": "#ef5350",
+        "envelope": "#7986cb",
+        "alarm-unconfirmed": "#ef5350",
+        "alarm-confirmed": "#66bb6a"
+      }
+    },
+    "status": {
+      "running": "#16a34a",
+      "stopped": "#6b7280",
+      "error": "#d32f2f",
+      "missing": "#9ca3af"
+    },
+    "graph": {
+      "light": {
+        "edge": "#546e7a",
+        "edge-active": "#00838f",
+        "node-default": "#b2dfdb",
+        "node-faded": "#cfd8dc"
+      },
+      "dark": {
+        "edge": "#546e7a",
+        "edge-active": "#26a69a",
+        "node-default": "#2a3a3a",
+        "node-faded": "#1e1e1e"
+      }
+    }
+  },
+  "spacing": {
+    "xs": "4px",
+    "sm": "8px",
+    "md": "16px",
+    "lg": "24px",
+    "xl": "32px"
+  },
+  "typography": {
+    "font-family-base": "'Calibri', 'Helvetica Neue', Arial, sans-serif",
+    "font-size-base": "14px",
+    "font-size-sm": "12px",
+    "font-size-lg": "16px",
+    "font-size-xl": "20px",
+    "font-size-h1": "28px",
+    "font-size-h2": "24px",
+    "font-size-h3": "20px"
+  },
+  "border-radius": {
+    "none": "0px",
+    "sm": "2px",
+    "md": "4px",
+    "lg": "8px",
+    "pill": "9999px"
+  }
+}

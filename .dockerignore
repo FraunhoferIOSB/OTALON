@@ -1,0 +1,84 @@
+# Build-context exclusions for the repository root (SUITE-041 / HC6).
+#
+# Six of the eight service images build with `context: .` (see
+# docker-compose.yml), so THIS file is the one Docker reads for them —
+# Docker only honours a `.dockerignore` at the context root, which means the
+# per-subproject files were dead for every `context: .` build.
+#
+# Without it the context was ~60 GB: shared/ (23G runtime data), .dev/ (23G),
+# .export/ (7.6G datasets) and .venv313/ (3.1G) were sent to the daemon on
+# every build. Nothing here is copied by any Dockerfile.
+#
+# NET-006 raised the stakes of this file: otalon-capture/Dockerfile no longer
+# lists the modules under src/ one by one, it copies the tree wholesale
+# (`COPY otalon-capture/src/ /app/src/`) so a new module cannot silently miss
+# the image. Keeping non-runtime content OUT of the image is therefore this
+# file's job now, not the Dockerfile's. Before ADDING a pattern here, check no
+# Dockerfile COPYs a matching path — an over-broad rule is the mirror-image
+# failure of NET-006 and equally silent at build time.
+
+# --- VCS / tooling -----------------------------------------------------
+.git
+.gitignore
+.gitmodules
+.github
+.kilo
+.claude
+openspec
+
+# --- Runtime + working data (never part of an image) -------------------
+shared/
+.dev/
+.export/
+.tools/
+
+# --- Local envs and secrets -------------------------------------------
+.venv*
+venv/
+.env
+.env.*
+!.env.compose.sample
+
+# --- Python build/test artefacts ---------------------------------------
+# Load-bearing for the wholesale `COPY src/` in otalon-capture (NET-006):
+# these are what keeps caches and test material out of the image.
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.hypothesis/
+**/*.egg-info/
+**/.coverage
+**/.coverage.*
+**/coverage.xml
+**/htmlcov/
+**/tests/
+**/test/
+**/test-results/
+**/conftest.py
+**/test_*.py
+**/*_test.py
+
+# --- Node ---------------------------------------------------------------
+**/node_modules/
+**/.nuxt/
+**/.output/
+**/dist/
+**/playwright-report/
+
+# --- Editor / OS / VCS leftovers ---------------------------------------
+**/.DS_Store
+**/.idea/
+**/.vscode/
+**/*.swp
+**/*.orig
+**/*.rej
+**/*.bak
+**/*~
+**/.ipynb_checkpoints/
+**/*.ipynb
+
+# Markdown files are not broadly excluded: some are runtime prompt/configuration
+# inputs or may be required by a checked-in build recipe. Dockerfiles explicitly
+# copy only the runtime files they need.

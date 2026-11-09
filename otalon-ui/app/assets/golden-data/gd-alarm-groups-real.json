@@ -1,0 +1,461 @@
+[
+  {
+    "id": "def17204-239c-4568-bdb2-cc7368d2cec2",
+    "module": "netcap",
+    "start_timestamp": "2026-03-07T20:26:37+01:00",
+    "end_timestamp": "2026-03-07T20:26:42+01:00",
+    "primary_type": "T0802/opcua_enum",
+    "multi_type": false,
+    "confirmed": false,
+    "is_active": false,
+    "series_ids": [
+      "02:00:00:00:00:08/02:00:00:00:00:11///////Ethernet:ARP",
+      "02:00:00:00:00:08/02:00:00:00:00:11//IPv4/192.0.2.1/192.0.2.3/4840/*/Ethernet:IPv4:TCP:OPC-UA",
+      "02:00:00:00:00:08/02:00:00:00:00:11//IPv4/192.0.2.1/192.0.2.3/80/34094/Ethernet:IPv4:TCP",
+      "02:00:00:00:00:11/02:00:00:00:00:08///////Ethernet:ARP",
+      "02:00:00:00:00:11/02:00:00:00:00:08//IPv4/192.0.2.3/192.0.2.1/34094/80/Ethernet:IPv4:TCP",
+      "02:00:00:00:00:12/02:00:00:00:00:08///////Ethernet:ARP",
+      "02:00:00:00:00:11/02:00:00:00:00:08//IPv4/192.0.2.3/192.0.2.1/*/4840/Ethernet:IPv4:TCP:OPC-UA",
+      "02:00:00:00:00:08/02:00:00:00:00:12//IPv4/192.0.2.1/192.0.2.3/4840/*/Ethernet:IPv4:TCP"
+    ],
+    "anomaly_type_stats": {
+      "T0802/opcua_enum": {
+        "interval_count": 2,
+        "count": 2,
+        "confidence_mean": 0.85,
+        "score_norm": 0.78,
+        "packet_rate_mean": 10.5,
+        "byte_rate_mean": 6300.0
+      },
+      "NoBounds": {
+        "interval_count": 8,
+        "count": 9,
+        "confidence_mean": 1.0,
+        "score_norm": 1.0,
+        "packet_rate_mean": 5.5,
+        "byte_rate_mean": 1748.75
+      },
+      "T0814/hping3": {
+        "interval_count": 2,
+        "count": 2,
+        "confidence_mean": 0.9,
+        "score_norm": 0.43,
+        "packet_rate_mean": 3.0,
+        "byte_rate_mean": 180.0
+      },
+      "T0830/aitm_arp": {
+        "interval_count": 3,
+        "count": 4,
+        "confidence_mean": 0.91,
+        "score_norm": 0.45,
+        "packet_rate_mean": 1.0,
+        "byte_rate_mean": 54.0
+      },
+      "T0888/port_scan": {
+        "interval_count": 1,
+        "count": 1,
+        "confidence_mean": 1.0,
+        "score_norm": 0.55,
+        "packet_rate_mean": 14.0,
+        "byte_rate_mean": 868.0
+      }
+    }
+  },
+  {
+    "id": "afc13141-676b-4b9c-9ef3-401931ebe305",
+    "module": "netcap",
+    "start_timestamp": "2026-03-07T20:31:39+01:00",
+    "end_timestamp": "2026-03-07T20:31:39+01:00",
+    "primary_type": "T0846/pn_discovery",
+    "multi_type": false,
+    "confirmed": false,
+    "is_active": false,
+    "series_ids": [
+      "02:00:00:00:00:02/02:00:00:00:00:11///////Ethernet:PROFINET_RT:PROFINET_RT_DCP",
+      "02:00:00:00:00:08/02:00:00:00:00:11/0//////Ethernet:VLAN:PROFINET_RT:PROFINET_RT_DCP",
+      "02:00:00:00:00:11/01:0e:cf:00:00:00///////Ethernet:PROFINET_RT:PROFINET_RT_DCP",
+      "02:00:00:00:00:0f/02:00:00:00:00:11/0//////Ethernet:VLAN:PROFINET_RT:PROFINET_RT_DCP",
+      "02:00:00:00:00:0d/02:00:00:00:00:11/0//////Ethernet:VLAN:PROFINET_RT:PROFINET_RT_DCP",
+      "02:00:00:00:00:0a/02:00:00:00:00:11/0//////Ethernet:VLAN:PROFINET_RT:PROFINET_RT_DCP",
+      "02:00:00:00:00:03/02:00:00:00:00:11///////Ethernet:PROFINET_RT:PROFINET_RT_DCP"
+    ],
+    "anomaly_type_stats": {
+      "NoBounds": {
+        "interval_count": 7,
+        "count": 7,
+        "confidence_mean": 1.0,
+        "score_norm": 1.0,
+        "packet_rate_mean": 1.0,
+        "byte_rate_mean": 118.29
+      },
+      "T0846/pn_discovery": {
+        "interval_count": 6,
+        "count": 6,
+        "confidence_mean": 1.0,
+        "score_norm": 0.98,
+        "packet_rate_mean": 1.0,
+        "byte_rate_mean": 128.0
+      }
+    }
+  },
+  {
+    "id": "bda0fd32-3da9-4f46-81f9-a20f133b34da",
+    "module": "netcap",
+    "start_timestamp": "2026-03-07T20:36:43+01:00",
+    "end_timestamp": "2026-03-07T20:36:48+01:00",
+    "primary_type": "T0802/opcua_enum",
+    "multi_type": false,
+    "confirmed": false,
+    "is_active": false,
+    "series_ids": [
+      "02:00:00:00:00:08/02:00:00:00:00:11///////Ethernet:ARP",
+      "02:00:00:00:00:08/02:00:00:00:00:11//IPv4/192.0.2.1/192.0.2.3/80/34094/Ethernet:IPv4:TCP",
+      "02:00:00:00:00:11/02:00:00:00:00:08///////Ethernet:ARP",
+      "02:00:00:00:00:11/02:00:00:00:00:08//IPv4/192.0.2.3/192.0.2.1/34094/80/Ethernet:IPv4:TCP",
+      "02:00:00:00:00:12/02:00:00:00:00:08///////Ethernet:ARP",
+      "02:00:00:00:00:11/02:00:00:00:00:08//IPv4/192.0.2.3/192.0.2.1/*/4840/Ethernet:IPv4:TCP:OPC-UA",
+      "02:00:00:00:00:08/02:00:00:00:00:12//IPv4/192.0.2.1/192.0.2.3/4840/33540/Ethernet:IPv4:TCP:OPC-UA",
+      "02:00:00:00:00:08/02:00:00:00:00:12//IPv4/192.0.2.1/192.0.2.3/4840/*/Ethernet:IPv4:TCP"
+    ],
+    "anomaly_type_stats": {
+      "NoBounds": {
+        "interval_count": 9,
+        "count": 9,
+        "confidence_mean": 1.0,
+        "score_norm": 1.0,
+        "packet_rate_mean": 5.0,
+        "byte_rate_mean": 1561.11
+      },
+      "T0802/opcua_enum": {
+        "interval_count": 2,
+        "count": 2,
+        "confidence_mean": 0.85,
+        "score_norm": 0.71,
+        "packet_rate_mean": 10.5,
+        "byte_rate_mean": 6300.0
+      },
+      "T0830/aitm_arp": {
+        "interval_count": 4,
+        "count": 4,
+        "confidence_mean": 0.9,
+        "score_norm": 0.41,
+        "packet_rate_mean": 1.0,
+        "byte_rate_mean": 55.5
+      },
+      "T0814/hping3": {
+        "interval_count": 2,
+        "count": 2,
+        "confidence_mean": 0.9,
+        "score_norm": 0.36,
+        "packet_rate_mean": 3.0,
+        "byte_rate_mean": 180.0
+      }
+    }
+  },
+  {
+    "id": "bd9422f6-25dc-473b-9af5-f72d6beaafbb",
+    "module": "netcap",
+    "start_timestamp": "2026-03-07T20:41:45+01:00",
+    "end_timestamp": "2026-03-07T20:41:50+01:00",
+    "primary_type": "T0802/opcua_enum",
+    "multi_type": false,
+    "confirmed": false,
+    "is_active": false,
+    "series_ids": [
+      "02:00:00:00:00:0d/02:00:00:00:00:11//IPv4/192.0.2.5/192.0.2.3/4840/*/Ethernet:IPv4:TCP:OPC-UA",
+      "02:00:00:00:00:11/02:00:00:00:00:0d///////Ethernet:ARP",
+      "02:00:00:00:00:11/02:00:00:00:00:0d//IPv4/192.0.2.3/192.0.2.5/*/4840/Ethernet:IPv4:TCP:OPC-UA",
+      "02:00:00:00:00:0d/02:00:00:00:00:11//IPv4/192.0.2.5/192.0.2.3/0/*/Ethernet:IPv4:TCP",
+      "02:00:00:00:00:11/02:00:00:00:00:0d//IPv4/192.0.2.3/192.0.2.5/*/0/Ethernet:IPv4:TCP",
+      "02:00:00:00:00:0d/02:00:00:00:00:11///////Ethernet:ARP"
+    ],
+    "anomaly_type_stats": {
+      "NoBounds": {
+        "interval_count": 6,
+        "count": 6,
+        "confidence_mean": 1.0,
+        "score_norm": 1.0,
+        "packet_rate_mean": 7.33,
+        "byte_rate_mean": 2944.17
+      },
+      "T0802/opcua_enum": {
+        "interval_count": 2,
+        "count": 2,
+        "confidence_mean": 0.85,
+        "score_norm": 0.8,
+        "packet_rate_mean": 10.5,
+        "byte_rate_mean": 8122.5
+      },
+      "T0888/port_scan": {
+        "interval_count": 1,
+        "count": 1,
+        "confidence_mean": 1.0,
+        "score_norm": 0.26,
+        "packet_rate_mean": 14.0,
+        "byte_rate_mean": 868.0
+      },
+      "T0830/aitm_arp": {
+        "interval_count": 2,
+        "count": 2,
+        "confidence_mean": 0.86,
+        "score_norm": 0.19,
+        "packet_rate_mean": 1.0,
+        "byte_rate_mean": 60.0
+      }
+    }
+  },
+  {
+    "id": "5aae7727-658a-40b4-a80b-a0ef3dd0896c",
+    "module": "netcap",
+    "start_timestamp": "2026-03-07T21:01:48+01:00",
+    "end_timestamp": "2026-03-07T21:01:48+01:00",
+    "primary_type": "T0846/pn_discovery",
+    "multi_type": false,
+    "confirmed": false,
+    "is_active": false,
+    "series_ids": [
+      "02:00:00:00:00:02/02:00:00:00:00:11///////Ethernet:PROFINET_RT:PROFINET_RT_DCP",
+      "02:00:00:00:00:11/01:0e:cf:00:00:00///////Ethernet:PROFINET_RT:PROFINET_RT_DCP",
+      "02:00:00:00:00:0f/02:00:00:00:00:11/0//////Ethernet:VLAN:PROFINET_RT:PROFINET_RT_DCP",
+      "02:00:00:00:00:03/02:00:00:00:00:11///////Ethernet:PROFINET_RT:PROFINET_RT_DCP",
+      "02:00:00:00:00:0d/02:00:00:00:00:11/0//////Ethernet:VLAN:PROFINET_RT:PROFINET_RT_DCP",
+      "02:00:00:00:00:0a/02:00:00:00:00:11/0//////Ethernet:VLAN:PROFINET_RT:PROFINET_RT_DCP",
+      "02:00:00:00:00:08/02:00:00:00:00:11/0//////Ethernet:VLAN:PROFINET_RT:PROFINET_RT_DCP"
+    ],
+    "anomaly_type_stats": {
+      "NoBounds": {
+        "interval_count": 7,
+        "count": 7,
+        "confidence_mean": 1.0,
+        "score_norm": 1.0,
+        "packet_rate_mean": 1.0,
+        "byte_rate_mean": 118.29
+      },
+      "T0846/pn_discovery": {
+        "interval_count": 6,
+        "count": 6,
+        "confidence_mean": 1.0,
+        "score_norm": 0.98,
+        "packet_rate_mean": 1.0,
+        "byte_rate_mean": 128.0
+      }
+    }
+  },
+  {
+    "id": "5e5f027f-253d-47a8-9afd-6bc1576fee02",
+    "module": "netcap",
+    "start_timestamp": "2026-03-07T20:46:47+01:00",
+    "end_timestamp": "2026-03-07T20:47:19+01:00",
+    "primary_type": "T0830/aitm_arp",
+    "multi_type": false,
+    "confirmed": false,
+    "is_active": true,
+    "series_ids": [
+      "02:00:00:00:00:11/02:00:00:00:00:03//IPv4/192.0.2.5/192.0.2.4/0/0/Ethernet:IPv4:ICMP",
+      "02:00:00:00:00:11/02:00:00:00:00:0d///////Ethernet:ARP",
+      "02:00:00:00:00:03/02:00:00:00:00:11//IPv4/192.0.2.4/192.0.2.5/0/0/Ethernet:IPv4:ICMP",
+      "02:00:00:00:00:0d/02:00:00:00:00:03///////Ethernet:ARP",
+      "02:00:00:00:00:11/02:00:00:00:00:0d//IPv4/192.0.2.4/192.0.2.5/0/0/Ethernet:IPv4:ICMP",
+      "02:00:00:00:00:0d/02:00:00:00:00:03//IPv4/192.0.2.5/192.0.2.4/0/0/Ethernet:IPv4:ICMP",
+      "02:00:00:00:00:03/02:00:00:00:00:11///////Ethernet:ARP",
+      "02:00:00:00:00:11/02:00:00:00:00:03///////Ethernet:ARP",
+      "02:00:00:00:00:0d/02:00:00:00:00:11///////Ethernet:ARP"
+    ],
+    "anomaly_type_stats": {
+      "T0830/aitm_arp": {
+        "interval_count": 10,
+        "count": 16,
+        "confidence_mean": 0.86,
+        "score_norm": 0.35,
+        "packet_rate_mean": 1.0,
+        "byte_rate_mean": 60.0
+      },
+      "NoBounds": {
+        "interval_count": 17,
+        "count": 28,
+        "confidence_mean": 1.0,
+        "score_norm": 1.0,
+        "packet_rate_mean": 1.25,
+        "byte_rate_mean": 75.24
+      }
+    }
+  },
+  {
+    "id": "304e44e5-0161-49d4-a626-971f2756587d",
+    "module": "netcap",
+    "start_timestamp": "2026-03-07T21:06:52+01:00",
+    "end_timestamp": "2026-03-07T21:07:14+01:00",
+    "primary_type": "T0830/aitm_arp",
+    "multi_type": false,
+    "confirmed": false,
+    "is_active": true,
+    "series_ids": [
+      "02:00:00:00:00:11/02:00:00:00:00:03//IPv4/192.0.2.5/192.0.2.4/0/0/Ethernet:IPv4:ICMP",
+      "02:00:00:00:00:03/02:00:00:00:00:11///////Ethernet:ARP",
+      "02:00:00:00:00:11/02:00:00:00:00:0d///////Ethernet:ARP",
+      "02:00:00:00:00:0d/02:00:00:00:00:03///////Ethernet:ARP",
+      "02:00:00:00:00:11/02:00:00:00:00:0d//IPv4/192.0.2.4/192.0.2.5/0/0/Ethernet:IPv4:ICMP",
+      "02:00:00:00:00:0d/02:00:00:00:00:03//IPv4/192.0.2.5/192.0.2.4/0/0/Ethernet:IPv4:ICMP",
+      "02:00:00:00:00:03/02:00:00:00:00:11//IPv4/192.0.2.4/192.0.2.5/0/0/Ethernet:IPv4:ICMP",
+      "02:00:00:00:00:11/02:00:00:00:00:03///////Ethernet:ARP",
+      "02:00:00:00:00:0d/02:00:00:00:00:11///////Ethernet:ARP"
+    ],
+    "anomaly_type_stats": {
+      "NoBounds": {
+        "interval_count": 13,
+        "count": 25,
+        "confidence_mean": 1.0,
+        "score_norm": 1.0,
+        "packet_rate_mean": 1.25,
+        "byte_rate_mean": 75.08
+      },
+      "T0830/aitm_arp": {
+        "interval_count": 6,
+        "count": 13,
+        "confidence_mean": 0.86,
+        "score_norm": 0.41,
+        "packet_rate_mean": 1.0,
+        "byte_rate_mean": 60.0
+      }
+    }
+  },
+  {
+    "id": "f68141f2-9ae5-45c2-8ab3-e2a95884fb4e",
+    "module": "netcap",
+    "start_timestamp": "2026-03-08T20:07:18+01:00",
+    "end_timestamp": "2026-03-08T20:07:18+01:00",
+    "primary_type": "T0846/pn_discovery",
+    "multi_type": false,
+    "confirmed": true,
+    "is_active": false,
+    "series_ids": [
+      "02:00:00:00:00:02/02:00:00:00:00:11///////Ethernet:PROFINET_RT:PROFINET_RT_DCP",
+      "02:00:00:00:00:11/01:0e:cf:00:00:00///////Ethernet:PROFINET_RT:PROFINET_RT_DCP",
+      "02:00:00:00:00:0f/02:00:00:00:00:11/0//////Ethernet:VLAN:PROFINET_RT:PROFINET_RT_DCP",
+      "02:00:00:00:00:03/02:00:00:00:00:11///////Ethernet:PROFINET_RT:PROFINET_RT_DCP",
+      "02:00:00:00:00:0d/02:00:00:00:00:11/0//////Ethernet:VLAN:PROFINET_RT:PROFINET_RT_DCP",
+      "02:00:00:00:00:0a/02:00:00:00:00:11/0//////Ethernet:VLAN:PROFINET_RT:PROFINET_RT_DCP",
+      "02:00:00:00:00:08/02:00:00:00:00:11/0//////Ethernet:VLAN:PROFINET_RT:PROFINET_RT_DCP"
+    ],
+    "anomaly_type_stats": {
+      "NoBounds": {
+        "interval_count": 7,
+        "count": 7,
+        "confidence_mean": 1.0,
+        "score_norm": 1.0,
+        "packet_rate_mean": 1.0,
+        "byte_rate_mean": 118.29
+      },
+      "T0846/pn_discovery": {
+        "interval_count": 6,
+        "count": 6,
+        "confidence_mean": 1.0,
+        "score_norm": 0.98,
+        "packet_rate_mean": 1.0,
+        "byte_rate_mean": 128.0
+      }
+    }
+  },
+  {
+    "id": "277ead25-58d8-4ee2-8ea7-70658dc52213",
+    "module": "netcap",
+    "start_timestamp": "2026-03-08T21:56:19+01:00",
+    "end_timestamp": "2026-03-08T21:56:31+01:00",
+    "primary_type": [
+      "T0830/aitm_arp",
+      "T0846/arp_scan",
+      "T0814/hping3"
+    ],
+    "multi_type": true,
+    "confirmed": false,
+    "is_active": true,
+    "series_ids": [
+      "02:00:00:00:00:0f/01:00:5e:00:00:fc//IPv4/192.0.2.2/224.0.0.252/5355/5355/Ethernet:IPv4:UDP:DNS",
+      "02:00:00:00:00:08/02:00:00:00:00:11///////Ethernet:ARP",
+      "02:00:00:00:00:0a/02:00:00:00:00:11///////Ethernet:ARP",
+      "02:00:00:00:00:03/02:00:00:00:00:0d/0//////Ethernet:VLAN:PROFINET_RT:PROFINET_RT_IO",
+      "02:00:00:00:00:0d/01:0e:cf:00:00:00/0//////Ethernet:VLAN:PROFINET_RT:PROFINET_RT_DCP",
+      "02:00:00:00:00:0f/01:00:5e:00:00:16//IPv4/192.0.2.2/224.0.0.22/0/0/Ethernet:IPv4:IGMPv3",
+      "02:00:00:00:00:0c/02:00:00:00:00:11///////Ethernet:ARP",
+      "02:00:00:00:00:02/02:00:00:00:00:11///////Ethernet:ARP",
+      "02:00:00:00:00:03/02:00:00:00:00:0d///////Ethernet:PROFINET_RT",
+      "02:00:00:00:00:0d/02:00:00:00:00:03/0//////Ethernet:VLAN:PROFINET_RT:PROFINET_RT_IO",
+      "02:00:00:00:00:0c/02:00:00:00:00:0f///////Ethernet:ARP",
+      "02:00:00:00:00:0d/01:00:5e:00:00:16//IPv4/192.0.2.5/224.0.0.22/0/0/Ethernet:IPv4:IGMPv3",
+      "02:00:00:00:00:03/02:00:00:00:00:11///////Ethernet:ARP",
+      "02:00:00:00:00:0f/02:00:00:00:00:11///////Ethernet:ARP",
+      "02:00:00:00:00:0d/01:00:5e:00:00:fc//IPv4/192.0.2.5/224.0.0.252/5355/5355/Ethernet:IPv4:UDP:DNS"
+    ],
+    "anomaly_type_stats": {
+      "NoBounds": {
+        "interval_count": 18,
+        "count": 26,
+        "confidence_mean": 1.0,
+        "score_norm": 1.0,
+        "packet_rate_mean": 1.26,
+        "byte_rate_mean": 79.63
+      },
+      "T0830/aitm_arp": {
+        "interval_count": 5,
+        "count": 6,
+        "confidence_mean": 0.86,
+        "score_norm": 0.69,
+        "packet_rate_mean": 1.0,
+        "byte_rate_mean": 60.0
+      },
+      "T0846/arp_scan": {
+        "interval_count": 2,
+        "count": 2,
+        "confidence_mean": 1.0,
+        "score_norm": 0.81,
+        "packet_rate_mean": 2.0,
+        "byte_rate_mean": 128.0
+      },
+      "T0814/hping3": {
+        "interval_count": 1,
+        "count": 1,
+        "confidence_mean": 1.0,
+        "score_norm": 0.75,
+        "packet_rate_mean": 2.0,
+        "byte_rate_mean": 120.0
+      }
+    }
+  },
+  {
+    "id": "482b4f5f-f69e-49d4-a92c-e68eef799b96",
+    "module": "netcap",
+    "start_timestamp": "2026-03-07T04:05:47+01:00",
+    "end_timestamp": "2026-03-07T04:05:47+01:00",
+    "primary_type": "T0846/pn_discovery",
+    "multi_type": false,
+    "confirmed": true,
+    "is_active": false,
+    "series_ids": [
+      "02:00:00:00:00:02/02:00:00:00:00:11///////Ethernet:PROFINET_RT:PROFINET_RT_DCP",
+      "02:00:00:00:00:08/02:00:00:00:00:11/0//////Ethernet:VLAN:PROFINET_RT:PROFINET_RT_DCP",
+      "02:00:00:00:00:11/01:0e:cf:00:00:00///////Ethernet:PROFINET_RT:PROFINET_RT_DCP",
+      "02:00:00:00:00:0f/02:00:00:00:00:11/0//////Ethernet:VLAN:PROFINET_RT:PROFINET_RT_DCP",
+      "02:00:00:00:00:0d/02:00:00:00:00:11/0//////Ethernet:VLAN:PROFINET_RT:PROFINET_RT_DCP",
+      "02:00:00:00:00:0a/02:00:00:00:00:11/0//////Ethernet:VLAN:PROFINET_RT:PROFINET_RT_DCP",
+      "02:00:00:00:00:03/02:00:00:00:00:11///////Ethernet:PROFINET_RT:PROFINET_RT_DCP"
+    ],
+    "anomaly_type_stats": {
+      "NoBounds": {
+        "interval_count": 7,
+        "count": 7,
+        "confidence_mean": 1.0,
+        "score_norm": 1.0,
+        "packet_rate_mean": 1.0,
+        "byte_rate_mean": 118.29
+      },
+      "T0846/pn_discovery": {
+        "interval_count": 6,
+        "count": 6,
+        "confidence_mean": 1.0,
+        "score_norm": 0.98,
+        "packet_rate_mean": 1.0,
+        "byte_rate_mean": 128.0
+      }
+    }
+  }
+]

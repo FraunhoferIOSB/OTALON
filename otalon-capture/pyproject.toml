@@ -1,0 +1,18 @@
+[tool.black]
+line-length = 120
+target-version = ["py313"]
+
+[tool.isort]
+profile = "black"
+line_length = 120
+known_first_party = ["otalon_capture", "pcap_recorder", "pcap_import"]
+
+[tool.mypy]
+python_version = "3.13"
+# The three packages of this subproject live under ``src/`` and are imported by
+# their bare names (``PYTHONPATH=/app/src`` in the image, ``pythonpath`` in
+# pytest.ini). Without this, mypy cannot resolve ``pcap_import.*`` from tests.
+mypy_path = "src"
+ignore_missing_imports = true
+warn_unused_ignores = true
+no_implicit_optional = true

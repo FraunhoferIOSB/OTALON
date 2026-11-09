@@ -1,0 +1,14 @@
+[
+  {
+    "name": "Postgres",
+    "running": true,
+    "detail": "ok in 0 ms",
+    "timestamp": 1774352114.3303924
+  },
+  {
+    "name": "InfluxDB",
+    "running": true,
+    "detail": "ok in 0 ms",
+    "timestamp": 1774352114.33048
+  }
+]

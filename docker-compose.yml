@@ -1,0 +1,752 @@
+name: "otalon-suite"
+
+x-timezone: &timezone
+  environment:
+    TZ: ${TZ:-Europe/Berlin}
+  volumes:
+    - /etc/localtime:/etc/localtime:ro
+    - /etc/timezone:/etc/timezone:ro
+
+services:
+  tls-proxy:
+    build:
+      context: ./tls-proxy
+    container_name: otalon-tls-proxy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8443:8443"
+      - "8493:8493"
+      - "9493:9493"
+    depends_on:
+      otalon-ui:
+        condition: service_healthy
+      otalon-api:
+        condition: service_healthy
+      otalon-capture:
+        condition: service_healthy
+    profiles:
+      - app
+      - all
+    restart: unless-stopped
+    # SUITE-052: mirrors the image HEALTHCHECK (nginx serves a loopback-only
+    # `/healthz` on 8099). Busybox `wget` is present in the alpine image.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8099/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    volumes:
+      - ./shared/tls:/etc/nginx/tls
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+
+  postgres:
+    image: postgres:15@sha256:9b1d34adbce1dd07ee6e94b4a2cf698884b89bd44a6c9c12f5da8f3acbfe4957
+    container_name: postgres
+    env_file:
+      - .env.compose
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: ${POSTGRES_DATABASE}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    healthcheck:
+      test: ["CMD-SHELL","pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DATABASE}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    profiles:
+      - core-db
+      - all
+      - adapters
+      - app
+    restart: unless-stopped
+
+  influxdb3:
+    image: influxdb:3-core@sha256:f4a6d4a76f0ed0a196cc997da472cd0b7ae52a766430493a1bead807ab8c1217
+    container_name: influxdb3
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    env_file:
+      - .env.compose
+    environment:
+      INFLUXDB3_AUTH_TOKEN: ${INFLUX_TOKEN}
+      TZ: ":/etc/localtime"
+    ports:
+      - "8181:8181"
+    volumes:
+      - influxdb3-data:/var/lib/influxdb3
+      # Local runtime input (git-ignored via /shared/), created by the operator
+      # from INFLUX_TOKEN as documented in INSTALL.md: {"token":"apiv3_...","name":"_admin"}.
+      # It must exist before `up`, otherwise Docker creates a directory here.
+      - ./shared/influx-admin-token.json:/run/secrets/influx-admin-token:ro
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+    command: ["influxdb3","serve","--node-id","capture-node1","--object-store","file","--data-dir","/var/lib/influxdb3","--admin-token-file","/run/secrets/influx-admin-token","--query-file-limit","50000","--datafusion-use-cached-parquet-loader"]
+    healthcheck:
+      test: ["CMD-SHELL","curl -sf -H \"Authorization: Bearer $INFLUX_TOKEN\" http://localhost:8181/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    profiles:
+      - core-db
+      - adapters
+      - app
+      - all
+    restart: unless-stopped
+
+  otalon-capture:
+    build:
+      context: .
+      dockerfile: otalon-capture/Dockerfile
+    container_name: otalon-capture
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    env_file:
+      - .env.compose
+    environment:
+      INFLUX_URL: http://127.0.0.1:8181
+    depends_on:
+      influxdb3:
+        condition: service_healthy
+    # SUITE-052: mirrors the image HEALTHCHECK. pcap_recorder serves an
+    # unauthenticated /health on 9090 and the image ships curl; the service is
+    # in the host netns, so the loopback address is the container's own.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9090/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    profiles:
+      - adapters
+      - all
+    restart: unless-stopped
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - ./shared/logs:/app/logs
+      - ./shared/pcap/buffer:/app/pcap/buffer
+      - ./shared/pcap/archive:/app/pcap/archive
+
+  # UI-078 / pcap-import-replay Wave C — offline PCAP import worker.
+  #
+  # Shares the otalon-capture image (same context + dockerfile) because the
+  # import replays a capture file through the SAME CapturePipeline/InfluxDBWriter
+  # the live adapter uses — one aggregation implementation, not two.
+  #
+  # Deliberate deviations from its sibling `otalon-capture` above:
+  #
+  #   * NO `network_mode: host`, NO NET_RAW/NET_ADMIN. The live adapter needs
+  #     both because it captures raw frames off the physical NIC `enp5s0`.
+  #     This worker only ever opens a file that the api already wrote into the
+  #     shared import volume, so it needs neither a raw socket nor the host
+  #     netns. Staying on the default bridge is what makes service-name DNS
+  #     work in both directions (api -> netcap-pcap-import:9092 for dispatch,
+  #     worker -> otalon-api:8090 for the /internal report channel).
+  #   * NO `INFLUX_URL: http://127.0.0.1:8181` override. That override exists
+  #     ONLY because the live adapter sits in the host netns, where the bridge
+  #     name `influxdb3` does not resolve. On the bridge the `.env.compose`
+  #     value `http://influxdb3:8181` is the correct one; copying the loopback
+  #     override here would point the worker at nothing.
+  #   * NO published port. Only otalon-api talks to this worker, and its
+  #     counterpart `/internal` channel on the api is explicitly not for
+  #     outside consumption. Bridge-internal reachability is sufficient.
+  otalon-capture-pcap-import:
+    build:
+      context: .
+      dockerfile: otalon-capture/Dockerfile
+    container_name: otalon-capture-pcap-import
+    # SUITE-042 wave 3: the image ENTRYPOINT uses python3-cap (a
+    # capability-bearing interpreter copy) for the live-capture service.
+    # This worker has no cap_add and needs no raw access, and a setcap
+    # binary refuses to exec without the matching capability — so it
+    # runs the plain interpreter instead.
+    entrypoint: ["python", "-u", "/app/entrypoint.py"]
+    env_file:
+      - .env.compose
+    environment:
+      # Module selection for the shared image's entrypoint
+      # (otalon-capture/entrypoint.py:14). Without this variable the
+      # entrypoint starts its default set — otalon-capture.main +
+      # pcap_recorder.main — which in a SECOND container would mean a second
+      # live capture writing the same `network_metrics` measurement. This
+      # belongs in the compose `environment:` block and NOT in `.env.compose`:
+      # the env file is shared by every service, so putting it there would
+      # silently disarm the live adapter's own capture.
+      NETCAP_ENTRYPOINT_MODULES: pcap_import.main
+    depends_on:
+      # The import writes points, so InfluxDB should exist first.
+      # otalon-api is intentionally NOT listed: the api dispatches TO this
+      # worker and the worker reports BACK to the api, so a hard dependency
+      # would couple both start orders for no gain. Both sides already tolerate
+      # the other being absent (api: job stays `queued` and is re-dispatched;
+      # worker: bounded retry on the report channel).
+      influxdb3:
+        condition: service_healthy
+    profiles:
+      - app
+      - all
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9092/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - ./shared/logs:/app/logs
+      # Shared upload volume — see the identical line on otalon-api.
+      # The container path is written literally (not via ${PCAP_IMPORT_DIR})
+      # because Compose interpolation does not read `env_file` values; a
+      # `${PCAP_IMPORT_DIR}` here would silently resolve to an empty string.
+      # It MUST stay in sync with PCAP_IMPORT_DIR in .env.compose.
+      - pcap-import-data:/import
+
+  otalon-clas:
+    # SUITE-042: runs as a non-root uid and needs no capability
+    # elevation. NOT applied to otalon-scan / otalon-capture, which
+    # raise NET_RAW from a file capability — no-new-privileges blocks
+    # that and the binary would refuse to exec.
+    security_opt:
+      - "no-new-privileges:true"
+    build:
+      context: .
+      dockerfile: otalon-clas/Dockerfile
+    container_name: otalon-clas
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - .env.compose
+    depends_on:
+      postgres:
+        condition: service_healthy
+      influxdb3:
+        condition: service_healthy
+    profiles:
+      - app
+      - all
+    restart: unless-stopped
+    # SUITE-052: file-mtime liveness, mirroring the image HEALTHCHECK.
+    # `run_live` touches /tmp/otalon-clas-last-tick after every completed
+    # tick; a wedged tick stops refreshing it. The live poll interval is 5 s,
+    # so 180 s tolerates a dependency restart without a false alarm. Reported
+    # per-tick failure is already logged inside the loop, so this probe is
+    # about a hung process, not a single failed module.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import os,sys,time; p='/tmp/otalon-clas-last-tick'; sys.exit(0 if os.path.exists(p) and time.time()-os.path.getmtime(p) < 180 else 1)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - ./shared/logs:/app/logs
+      - ${WORKSPACE_DIR:-/home/user/otalon-github}/shared/models:/app/models
+
+  otalon-ui:
+    # SUITE-042: runs as a non-root uid and needs no capability
+    # elevation. NOT applied to otalon-scan / otalon-capture, which
+    # raise NET_RAW from a file capability — no-new-privileges blocks
+    # that and the binary would refuse to exec.
+    security_opt:
+      - "no-new-privileges:true"
+    build:
+      context: ./otalon-ui
+      dockerfile: Dockerfile
+    container_name: otalon-ui
+    environment:
+      # Chat now goes to otalon-ai. The server-side proxy in
+      # `server/api/chat.post.ts` defaults to http://otalon-ai:9100/api/v1/chat;
+      # we keep CHAT_WEBHOOK_URL as an explicit override so the wiring is obvious.
+      CHAT_WEBHOOK_URL: http://otalon-ai:9100/api/v1/chat
+      MCP_SERVER_URL: http://otalon-mcp:9000
+      LOG_FILE: /app/logs/ui.log
+      LOG_LEVEL: info
+      NUXT_API_PROXY_TARGET: http://otalon-api:8090
+      OTALON_OPERATOR_KEY: ${ADMIN_API_KEY}
+      OTALON_AI_API_KEY: ${OTALON_AI_UI_KEY:?OTALON_AI_UI_KEY must match a key in OTALON_AI_ALLOWED_KEYS}
+    depends_on:
+      otalon-api:
+        condition: service_healthy
+    profiles:
+      - app
+      - all
+    restart: unless-stopped
+    # SUITE-052: mirrors the image HEALTHCHECK. `depends_on` above already
+    # gates on otalon-api being healthy, so this probe's `start_period` can
+    # stay short.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - ./shared/logs:/app/logs
+
+  otalon-api:
+    # SUITE-042: runs as a non-root uid and needs no capability
+    # elevation. NOT applied to otalon-scan / otalon-capture, which
+    # raise NET_RAW from a file capability — no-new-privileges blocks
+    # that and the binary would refuse to exec.
+    security_opt:
+      - "no-new-privileges:true"
+    build:
+      context: .
+      dockerfile: otalon-api/Dockerfile
+    container_name: otalon-api
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - .env.compose
+    environment:
+      INFLUXDB_HOST: influxdb3
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      API_PORT: "8090"
+      MCP_HOST: otalon-mcp
+      MCP_PORT: "9000"
+      PCAP_RECORDER_HOST: host.docker.internal
+      # PCAP recorder gained an operator-auth layer (CLAS-048 hardening), so the
+      # proxy must forward the operator credential. Without this the by-alarm
+      # PCAP download returns 502 "unreachable" (upstream 401). Compose
+      # interpolation uses the explicitly supplied `--env-file`, not env_file,
+      # where ADMIN_API_KEY lives.
+      PCAP_RECORDER_API_KEY: ${ADMIN_API_KEY}
+      AI_URL: http://otalon-ai:9100
+      OTALON_AI_API_KEY: ${OTALON_AI_UI_KEY:?OTALON_AI_UI_KEY must match a key in OTALON_AI_ALLOWED_KEYS}
+      OTALON_AI_INTERNAL_KEY: ${OTALON_AI_INTERNAL_KEY:?OTALON_AI_INTERNAL_KEY must match a key in OTALON_AI_ALLOWED_KEYS}
+      # otalon-scan runs in `network_mode: host` (so its active-scan
+      # modules can see the physical ICS lab segment on `enp5s0`).
+      # Service-name DNS no longer resolves to it from this bridge — reach
+      # the upstream via the host gateway. Override with `OTALON_SCAN_HOST`
+      # in the env file/host environment if the deployment publishes
+      # otalon-scan elsewhere.
+      OTALON_SCAN_HOST: ${OTALON_SCAN_HOST:-host.docker.internal}
+      OTALON_SCAN_PORT: "8091"
+      # Wave C / scan--api-proxy. Operator-level key for outbound calls
+      # to otalon-scan:8091 is injected by env_file. Do not mirror it via
+      # `${OTALON_SCAN_API_KEY}` here: Compose interpolation does not read
+      # env_file values and would override the real key with an empty value
+      # when the operator runs `docker compose` without `--env-file`.
+      PCAP_BUFFER_DIR: /app/pcap/buffer
+      PCAP_ARCHIVE_DIR: /app/pcap/archive
+      PCAP_BASELINE_DIR: /app/pcap/baseline
+      # ComposeRunner spawns a sibling `docker:cli` container via the host
+      # docker socket to run `docker compose restart otalon-clas`
+      # (boundary retrain). The Docker daemon resolves that sibling's bind
+      # mounts against the HOST filesystem, so COMPOSE_FILE / ENV_COMPOSE_PATH
+      # must point at the real host path of the workspace — NOT the default
+      # `/workspace`, which does not exist on the host and made the runner
+      # fail with `bind source path does not exist: /workspace` (exit 125).
+      # Resolve from the Compose shell environment; `.env.compose` is an env_file
+      # and is intentionally not used for Compose interpolation.
+      COMPOSE_FILE: ${WORKSPACE_DIR:-/home/user/otalon-github}/docker-compose.yml
+      ENV_COMPOSE_PATH: ${WORKSPACE_DIR:-/home/user/otalon-github}/.env.compose
+      # UI-075 WAVE D detection readiness/artifact manifest. The service
+      # derives per-module readiness from the otalon-clas module config and
+      # lists classifier artifacts from the model store. Both live under the
+      # workspace that is already bind-mounted below at its real host path;
+      # point the readiness service at them explicitly (its code defaults
+      # `/workspace/...` and `/app/models` do not exist in this container, which
+      # otherwise yields an all-`untrained`/`observe-only` readiness and an
+      # empty artifact manifest). These paths use the same explicit Compose
+      # workspace variable as the control-plane paths above.
+      OTALON_CLAS_CONFIG_PATH: ${WORKSPACE_DIR:-/home/user/otalon-github}/otalon-clas/config/config.json
+      MODEL_DIR: ${WORKSPACE_DIR:-/home/user/otalon-github}/shared/models
+      # UI-075 WAVE F system maintenance. Backup/support artifacts persist to a
+      # suite-owned host bind (./shared/operations → /app/operations) so they
+      # survive container recreation. BACKUP_CONFIG_SOURCE points at the same
+      # real host path the workspace is bind-mounted at (below), keeping the
+      # container-path == host-path invariant so the config backup reads the
+      # live worktree tree. BACKUP_POSTGRES_SOURCE stays a bind that is absent
+      # by default, so a `postgresql` backup scope fails closed rather than
+      # producing a false-verified empty archive (destructive DB dump is not
+      # run in this unattended stage). PCAP_CONFIG_PATH points at the shipped
+      # Netcap ringbuffer config bind so storage caps read the real
+      # 50000 MB / 2000 files limits, not a source-tree path invisible to the
+      # image.
+      BACKUP_DIR: /app/operations/backups
+      BACKUP_CONFIG_SOURCE: ${WORKSPACE_DIR:-/home/user/otalon-github}
+      BACKUP_POSTGRES_SOURCE: /app/operations/postgres-source
+      PCAP_CONFIG_PATH: /app/netcap-config/config_pcap.json
+      OTALON_RELEASE: ${OTALON_RELEASE:-unknown}
+      OTALON_IMAGE_DIGEST: ${OTALON_IMAGE_DIGEST:-}
+      OTALON_BUILD_REF: ${OTALON_BUILD_REF:-dev}
+      HOST_STORAGE_ROOT: /host-storage/root
+      HOST_STORAGE_HOME: /host-storage/home
+      HOST_STORAGE_VAR: /host-storage/var
+      HOST_INFLUX_DATA_PATH: ${HOST_INFLUX_DATA_PATH:-/host-storage/var/lib/docker/volumes/otalon-suite_influxdb3-data/_data}
+      HOST_POSTGRES_DATA_PATH: ${HOST_POSTGRES_DATA_PATH:-/host-storage/var/lib/docker/volumes/otalon-suite_postgres-data/_data}
+      HOST_LOG_PATH: ${HOST_LOG_PATH:-/host-storage/var/log}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      influxdb3:
+        condition: service_healthy
+    # SUITE-052: mirrors the image HEALTHCHECK. The image has neither curl nor
+    # wget, so the probe uses the interpreter that is already present against
+    # the unversioned, unauthenticated /health (SUITE-037).
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python3 -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8090/health', timeout=4).status == 200 else 1)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    profiles:
+      - app
+      - all
+    restart: unless-stopped
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - ./shared/logs:/app/logs
+      - ./shared/pcap/buffer:/app/pcap/buffer:rw
+      - ./shared/pcap/archive:/app/pcap/archive:rw
+      - ./shared/pcap/baseline:/app/pcap/baseline:rw
+      # UI-075 WAVE F: suite-owned persistent host bind for backup/support
+      # artifacts. Kept OUTSIDE the workspace bind below so recreation of the
+      # API container never drops the operator's local backup/support files.
+      - ./shared/operations:/app/operations:rw
+      # UI-078 / pcap-import-replay Wave C: shared PCAP import volume. Mounted
+      # at the IDENTICAL container path in `netcap-pcap-import` below. The api
+      # writes the upload here and hands the worker the ABSOLUTE path, which
+      # the worker opens verbatim — a path mismatch would surface only as a job
+      # failing with "file not found". The api additionally creates
+      # `/import/failed/` (bounded archive of failed uploads); no second mount.
+      # Literal path instead of ${PCAP_IMPORT_DIR}: Compose interpolation does
+      # not read env_file values and would render an empty path.
+      - pcap-import-data:/import
+      # Shipped Netcap ringbuffer config, read-only, so storage caps read the
+      # real 50000 MB / 2000 files limits from a path visible in the image.
+      - ./otalon-capture/config/config_pcap.json:/app/netcap-config/config_pcap.json:ro
+      # docker.sock must be rw: the boundary-retrain ComposeRunner creates +
+      # starts a sibling docker:cli container through it.
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+      - /:/host-storage/root:ro
+      - /home:/host-storage/home:ro
+      - /var:/host-storage/var:ro
+      # Mount the workspace at its real HOST path inside the container so that
+      # (a) EnvComposeService can open/rewrite .env.compose (TRAINING_ENABLED
+      # toggling for boundary retrain), (b) the ComposeRunner's sibling
+      # container — whose bind mounts the daemon resolves against the host —
+      # finds docker-compose.yml at the same path, and (c) the WAVE F storage/
+      # backup services read the live worktree tree (models, otalon-clas config,
+      # config backup source) truthfully. Container path == host path is what
+      # keeps all three mechanisms consistent; isolated runs set WORKSPACE_DIR
+      # to their exact worktree before invoking Compose.
+      - ${WORKSPACE_DIR:-/home/user/otalon-github}:${WORKSPACE_DIR:-/home/user/otalon-github}:rw
+      # Mount the same operator-owned env file at its host path for the API's
+      # configuration-management flow. Compose interpolation and service env
+      # injection still use the explicit --env-file / env_file settings.
+      - ${WORKSPACE_DIR:-/home/user/otalon-github}/.env.compose:${WORKSPACE_DIR:-/home/user/otalon-github}/.env.compose:rw
+
+  otalon-scan:
+    build:
+      context: .
+      dockerfile: otalon-scan/Dockerfile
+    container_name: otalon-scan
+    # Host networking is required so the active-scan modules can reach the
+    # physical ICS lab segment (`192.168.0.0/24` on host interface `enp5s0`).
+    # The default user-defined bridge isolates the container into a private
+    # subnet (e.g. `172.18.0.0/16`) from which `arp_scan` (raw ARP via
+    # libpcap) and `pn_discovery` (raw PROFINET DCP frames, EtherType 0x8892
+    # via AF_PACKET) cannot see the lab broadcast domain. Joining the host
+    # netns gives the modules direct access to `enp5s0` and any other
+    # physical interface configured for the lab.
+    #
+    # Consequence: `ports:` is a no-op under `network_mode: host` (the
+    # service listens on the host directly on :8091) and has been removed
+    # to silence the compose warning. Service-name DNS
+    # (`http://otalon-scan:8091`) no longer resolves from inside the
+    # default bridge; in-cluster clients reach the service via
+    # `host.docker.internal:8091` (see `OTALON_SCAN_HOST` on the
+    # `otalon-api` service). The mirror pattern is already used by
+    # `otalon-capture` (raw libpcap capture from physical NIC).
+    network_mode: host
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - .env.compose
+    environment:
+      CS_MODULES_PATH: /app/.sample/scanner/modules
+      # Added by OpenSpec change `harden-otalon-scan-security` (Phase 5).
+      # `env_file` already injects these from .env.compose; the explicit
+      # `${...}` references make the dependency visible in `docker compose
+      # config` output and let deployments use the host env as an override.
+      OTALON_SCAN_ALLOWED_KEYS: ${OTALON_SCAN_ALLOWED_KEYS:-}
+      CS_SNMP_LOG_COMMUNITY: ${CS_SNMP_LOG_COMMUNITY:-}
+      # In `network_mode: host` the bridge DNS name `postgres` no longer
+      # resolves. The Postgres container publishes :5432 on the host, so
+      # we reach it through the loopback address. `.env.compose` ships a
+      # `POSTGRES_DSN` that points at the bridge service name; the
+      # override below wins for this service only.
+      POSTGRES_DSN: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@127.0.0.1:${POSTGRES_PORT:-5432}/${POSTGRES_DATABASE}
+      POSTGRES_HOST: 127.0.0.1
+    # F-02 (refactor-otalon-scan-code-quality-v1) /
+    # scan--dependency-management "Linux Capabilities Documented in
+    # Compose":
+    #
+    #   arp_scan       — needs NET_RAW to construct raw ARP requests
+    #                    via libpcap (nmap -sn / -e <iface>).
+    #   pn_discovery   — needs NET_RAW to send/receive raw
+    #                    EtherType 0x8892 (PROFINET DCP) frames via a
+    #                    Linux AF_PACKET socket (SCAN-029; previously
+    #                    scapy).
+    #   NET_ADMIN      — permits binding to a specific network
+    #                    interface (used by both modules above when
+    #                    ``network_interface`` is set in the module
+    #                    config).
+    #   Other modules (port_scan via nmap TCP/UDP connect, opcua_discover,
+    #   snmp_scan) do NOT require either capability and run unprivileged.
+    #
+    # ``privileged: true`` is intentionally NOT set — explicit capability
+    # allow-listing is tighter and the spec forbids the privileged
+    # alternative.
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # SUITE-052: mirrors the image HEALTHCHECK. The plain /health handler does
+    # no I/O (the dependency-aware probe is /health?deep=true and is
+    # deliberately not wired here), so a Postgres blip only fails the scan
+    # API's own operations, not this liveness signal. `network_mode: host`
+    # means localhost is the host's loopback; :8091 is the port the API binds.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8091/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    profiles:
+      - app
+      - all
+    restart: unless-stopped
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - ./shared/logs:/app/logs
+
+  # add-passive-asset-seeder — peer worker that periodically reads
+  # otalon-capture's MAC and UCI tags from InfluxDB and projects them
+  # into otalon-scan's PostgreSQL inventory with source='passive'.
+  # Runs as a separate process so it has independent failure isolation
+  # and restart cadence vs the active-scan API. NO host networking and
+  # NO NET_RAW/NET_ADMIN per design.md D-NO-NET-CAPS.
+  otalon-scan-passive-seeder:
+    build:
+      context: .
+      dockerfile: otalon-scan/Dockerfile
+    container_name: otalon-scan-passive-seeder
+    command: ["python", "-m", "otalon_scan.passive_source"]
+    env_file:
+      - .env.compose
+    environment:
+      PASSIVE_SEEDER_ENABLED: "${PASSIVE_SEEDER_ENABLED:-false}"
+      PASSIVE_SEEDER_POLL_INTERVAL_S: "${PASSIVE_SEEDER_POLL_INTERVAL_S:-60}"
+      PASSIVE_SEEDER_LOOKBACK_WINDOW_S: "${PASSIVE_SEEDER_LOOKBACK_WINDOW_S:-300}"
+      PASSIVE_SEEDER_INFLUX_URL: "${PASSIVE_SEEDER_INFLUX_URL:-http://influxdb3:8181}"
+      PASSIVE_SEEDER_INFLUX_TOKEN: "${PASSIVE_SEEDER_INFLUX_TOKEN:-${INFLUX_TOKEN:-}}"
+      PASSIVE_SEEDER_INFLUX_BUCKET: "${PASSIVE_SEEDER_INFLUX_BUCKET:-netcap}"
+      PASSIVE_SEEDER_DROP_LAA: "${PASSIVE_SEEDER_DROP_LAA:-false}"
+      # The seeder runs on the default bridge (no host networking),
+      # so it reaches Postgres via service-name DNS. Override the
+      # otalon-scan-API-style host-routed DSN explicitly.
+      POSTGRES_DSN: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:${POSTGRES_PORT:-5432}/${POSTGRES_DATABASE}"
+      POSTGRES_HOST: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+      influxdb3:
+        condition: service_healthy
+    # The worker is NOT an HTTP server — the Dockerfile's default
+    # HEALTHCHECK on http://localhost:8091/health does not apply here.
+    # We override it with a file-mtime liveness marker that
+    # ``_run_one_cycle`` touches at the end of every cycle. With a
+    # default poll interval of 60 s, ``-mmin -3`` tolerates one missed
+    # cycle before flipping to ``(unhealthy)``. Bug-cluster 2026-05-21.
+    healthcheck:
+      # "disabled" is a valid, healthy state: a config-disabled worker idles
+      # by design and never touches the liveness marker, which used to flip
+      # it to (unhealthy) forever (SCAN-032). Gate on the enabled flag first,
+      # then apply the unchanged mtime liveness check for the enabled case.
+      test:
+        - CMD-SHELL
+        - '[ "$${PASSIVE_SEEDER_ENABLED:-false}" != "true" ] || find /tmp/passive-seeder-last-cycle -mmin -3 | grep -q .' 
+      interval: 60s
+      timeout: 5s
+      retries: 2
+      start_period: 90s
+    profiles:
+      - adapters
+      - all
+    restart: unless-stopped
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - ./shared/logs:/app/logs
+
+  # CVE-Lookup auto-loop worker (Welle C / Task 3.4).
+  # Matches the passive-seeder pattern: separate process, no host
+  # networking, file-mtime liveness healthcheck.
+  otalon-scan-cve-lookup:
+    build:
+      context: .
+      dockerfile: otalon-scan/Dockerfile
+    container_name: otalon-scan-cve-lookup
+    command: ["python", "-m", "otalon_scan.cve_lookup"]
+    env_file:
+      - .env.compose
+    environment:
+      CVE_LOOKUP_ENABLED: "${CVE_LOOKUP_ENABLED:-false}"
+      CVE_LOOKUP_INTERVAL_S: "${CVE_LOOKUP_INTERVAL_S:-86400}"
+      NVD_API_KEY: "${NVD_API_KEY:-}"
+      POSTGRES_DSN: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:${POSTGRES_PORT:-5432}/${POSTGRES_DATABASE}"
+      POSTGRES_HOST: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # See SCAN-032 on otalon-scan-passive-seeder: a config-disabled worker
+      # idles by design and never writes its heartbeat, so require the fresh
+      # mtime only when CVE_LOOKUP_ENABLED is true.
+      test:
+        - CMD-SHELL
+        - '[ "$${CVE_LOOKUP_ENABLED:-false}" != "true" ] || find /tmp/cve-lookup-last-cycle -mmin -15 | grep -q .' 
+      interval: 60s
+      timeout: 5s
+      retries: 2
+      start_period: 120s
+    profiles:
+      - adapters
+      - all
+    restart: unless-stopped
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - ./shared/logs:/app/logs
+
+  otalon-mcp:
+    # SUITE-042: runs as a non-root uid and needs no capability
+    # elevation. NOT applied to otalon-scan / otalon-capture, which
+    # raise NET_RAW from a file capability — no-new-privileges blocks
+    # that and the binary would refuse to exec.
+    security_opt:
+      - "no-new-privileges:true"
+    build:
+      context: .
+      dockerfile: otalon-mcp/Dockerfile
+    container_name: otalon-mcp
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - .env.compose
+    environment:
+      AI_URL: http://otalon-ai:9100
+      PCAP_BASELINE_DIR: /app/pcap/baseline
+    depends_on:
+      postgres:
+        condition: service_healthy
+      influxdb3:
+        condition: service_healthy
+    # SUITE-052: mirrors the image HEALTHCHECK; /health needs no credential.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    profiles:
+      - app
+      - all
+    restart: unless-stopped
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - ./shared/logs:/app/logs
+      - ./shared/pcap/baseline:/app/pcap/baseline:ro
+
+  # otalon-ai — consolidated chat-orchestration + subagent-jobs service.
+  # Replaces former agent service (removed in Phase 13 of the
+  # OpenSpec change `replace-n8n-chat-orchestration`).
+  otalon-ai:
+    # SUITE-042: runs as a non-root uid and needs no capability
+    # elevation. NOT applied to otalon-scan / otalon-capture, which
+    # raise NET_RAW from a file capability — no-new-privileges blocks
+    # that and the binary would refuse to exec.
+    security_opt:
+      - "no-new-privileges:true"
+    build:
+      context: .
+      dockerfile: otalon-ai/Dockerfile
+    container_name: otalon-ai
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - .env.compose
+    environment:
+      # Server-to-server MCP consumer credential. otalon-mcp is
+      # fail-closed on OTALON_MCP_ALLOWED_KEYS, so this must equal the
+      # :key component of one allow-list entry. Injected server-side only;
+      # it never reaches the UI/browser bundle. Fail-fast if unset.
+      OTALON_MCP_API_KEY: ${OTALON_MCP_API_KEY:?OTALON_MCP_API_KEY must match a key in OTALON_MCP_ALLOWED_KEYS}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      otalon-mcp:
+        condition: service_healthy
+    # SUITE-052: mirrors the image HEALTHCHECK. otalon-ai already gates on
+    # otalon-mcp being healthy, so its own start_period can be short.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9100/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    profiles:
+      - app
+      - all
+    restart: unless-stopped
+    # No host port: otalon-ai is reachable through the compose network only.
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+      - ./shared/logs:/app/logs
+      - ${WORKSPACE_DIR:-/home/user/otalon-github}/otalon-mcp/docs/system_promt_agent.md:/app/prompts/system_prompt.md:ro
+
+volumes:
+  postgres-data:
+  influxdb3-data:
+  # UI-078 / pcap-import-replay Wave C: upload hand-off between otalon-api
+  # (writer) and netcap-pcap-import (reader), mounted at /import in both.
+  pcap-import-data:

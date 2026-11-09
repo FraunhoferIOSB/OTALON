@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160" role="img" aria-labelledby="title">
+  <title id="title">OTALON</title>
+  <!--
+    Favicon variant of public/images/otalon-symbol-color.svg. Two deliberate
+    deviations from the master asset:
+
+    1. The ink colour follows the browser chrome through prefers-color-scheme,
+       so one file serves both light and dark tab bars.
+    2. Geometry is scaled up and the stroke weights are increased. The master
+       symbol is drawn for display sizes; at 16px its 5px strokes fall below one
+       device pixel and the mark turns to mush. Aperture, zigzag and anomaly dot
+       carry the recognition value, so they get the available area.
+  -->
+  <style>
+    .otalon-ink {
+      stroke: #15333a;
+    }
+    @media (prefers-color-scheme: dark) {
+      .otalon-ink {
+        stroke: #e0e0e0;
+      }
+    }
+  </style>
+  <line x1="6" y1="80" x2="34" y2="80" stroke="#168f87" stroke-width="9" stroke-linecap="round" />
+  <line x1="126" y1="80" x2="154" y2="80" stroke="#168f87" stroke-width="9" stroke-linecap="round" />
+  <path
+    class="otalon-ink"
+    d="M34 80 L48 80 L62 56 L76 104 L90 80 L126 80"
+    fill="none"
+    stroke-width="9"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <circle cx="62" cy="56" r="10" fill="#ef5350" />
+  <circle class="otalon-ink" cx="80" cy="80" r="46" fill="none" stroke-width="17" />
+</svg>

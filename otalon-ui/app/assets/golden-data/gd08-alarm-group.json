@@ -1,0 +1,741 @@
+{
+  "groups": [
+    {
+      "group_id": 1,
+      "module": "netcap",
+      "primary_type": "packet_count_high",
+      "start_time": "2025-03-20T10:15:00Z",
+      "end_time": "2025-03-20T10:45:00Z",
+      "is_active": true,
+      "is_confirmed": false,
+      "anomaly_count": 118,
+      "entity_count": 5,
+      "type_stats": [
+        {
+          "type": "packet_count_high",
+          "count": 45
+        },
+        {
+          "type": "total_volume_high",
+          "count": 32
+        },
+        {
+          "type": "mean_packet_size_low",
+          "count": 28
+        },
+        {
+          "type": "interarrival_time_high",
+          "count": 13
+        }
+      ],
+      "entities": [
+        {
+          "mac": "02:00:00:00:00:0f",
+          "ip": "192.0.2.2",
+          "port": 57212,
+          "protocols": [
+            "Ethernet",
+            "IPv4",
+            "TCP"
+          ],
+          "uci": "02:00:00:00:00:0f/02:00:00:00:00:0c//IPv4/192.0.2.2/192.0.2.6/57212/80/Ethernet:IPv4:TCP"
+        },
+        {
+          "mac": "02:00:00:00:00:0c",
+          "ip": "192.0.2.6",
+          "port": 80,
+          "protocols": [
+            "Ethernet",
+            "IPv4",
+            "TCP",
+            "HTTPResponse"
+          ],
+          "uci": "02:00:00:00:00:0c/02:00:00:00:00:0f//IPv4/192.0.2.6/192.0.2.2/80/57212/Ethernet:IPv4:TCP:HTTPResponse"
+        },
+        {
+          "mac": "02:00:00:00:00:03",
+          "ip": "192.0.2.4",
+          "port": 50000,
+          "protocols": [
+            "Ethernet",
+            "IPv4",
+            "UDP",
+            "PROFINET_DCE_RPC"
+          ],
+          "uci": "02:00:00:00:00:03/02:00:00:00:00:0d//IPv4/192.0.2.4/192.0.2.5/50000/52576/Ethernet:IPv4:UDP:PROFINET_DCE_RPC"
+        },
+        {
+          "mac": "02:00:00:00:00:0d",
+          "ip": "192.0.2.5",
+          "port": 52576,
+          "protocols": [
+            "Ethernet",
+            "IPv4",
+            "UDP",
+            "PROFINET_DCE_RPC"
+          ],
+          "uci": "02:00:00:00:00:0d/02:00:00:00:00:03//IPv4/192.0.2.5/192.0.2.4/52576/50000/Ethernet:IPv4:UDP:PROFINET_DCE_RPC"
+        },
+        {
+          "mac": "02:00:00:00:00:09",
+          "ip": "",
+          "port": 0,
+          "protocols": [
+            "Ethernet",
+            "PROFINET_RT",
+            "PROFINET_RT_PTCP"
+          ],
+          "uci": "02:00:00:00:00:09/01:80:c2:00:00:0e///////Ethernet:PROFINET_RT:PROFINET_RT_PTCP"
+        }
+      ]
+    },
+    {
+      "group_id": 2,
+      "module": "boundary",
+      "primary_type": "total_volume_low",
+      "start_time": "2025-03-20T09:30:00Z",
+      "end_time": "2025-03-20T09:55:00Z",
+      "is_active": false,
+      "is_confirmed": true,
+      "anomaly_count": 42,
+      "entity_count": 3,
+      "type_stats": [
+        {
+          "type": "total_volume_low",
+          "count": 25
+        },
+        {
+          "type": "packet_count_low",
+          "count": 12
+        },
+        {
+          "type": "mean_packet_size_high",
+          "count": 5
+        }
+      ],
+      "entities": [
+        {
+          "mac": "02:00:00:00:00:02",
+          "ip": "",
+          "port": 0,
+          "protocols": [
+            "Ethernet",
+            "VLAN",
+            "PROFINET_RT",
+            "PROFINET_RT_IO"
+          ],
+          "uci": "02:00:00:00:00:02/02:00:00:00:00:08/0//////Ethernet:VLAN:PROFINET_RT:PROFINET_RT_IO"
+        },
+        {
+          "mac": "02:00:00:00:00:08",
+          "ip": "",
+          "port": 0,
+          "protocols": [
+            "Ethernet",
+            "VLAN",
+            "PROFINET_RT",
+            "PROFINET_RT_IO"
+          ],
+          "uci": "02:00:00:00:00:08/02:00:00:00:00:02/0//////Ethernet:VLAN:PROFINET_RT:PROFINET_RT_IO"
+        },
+        {
+          "mac": "02:00:00:00:00:03",
+          "ip": "",
+          "port": 0,
+          "protocols": [
+            "Ethernet",
+            "PROFINET_RT",
+            "PROFINET_RT_IO"
+          ],
+          "uci": "02:00:00:00:00:03/02:00:00:00:00:0d///////Ethernet:PROFINET_RT:PROFINET_RT_IO"
+        }
+      ]
+    },
+    {
+      "group_id": 3,
+      "module": "netcap",
+      "primary_type": "mean_packet_size_high",
+      "start_time": "2025-03-20T11:00:00Z",
+      "end_time": "2025-03-20T11:30:00Z",
+      "is_active": true,
+      "is_confirmed": false,
+      "anomaly_count": 87,
+      "entity_count": 4,
+      "type_stats": [
+        {
+          "type": "mean_packet_size_high",
+          "count": 38
+        },
+        {
+          "type": "total_volume_high",
+          "count": 29
+        },
+        {
+          "type": "packet_count_high",
+          "count": 20
+        }
+      ],
+      "entities": [
+        {
+          "mac": "02:00:00:00:00:0f",
+          "ip": "192.0.2.2",
+          "port": 57212,
+          "protocols": [
+            "Ethernet",
+            "IPv4",
+            "TCP",
+            "HTTPRequest"
+          ],
+          "uci": "02:00:00:00:00:0f/02:00:00:00:00:0c//IPv4/192.0.2.2/192.0.2.6/57212/80/Ethernet:IPv4:TCP:HTTPRequest"
+        },
+        {
+          "mac": "02:00:00:00:00:0c",
+          "ip": "192.0.2.6",
+          "port": 80,
+          "protocols": [
+            "Ethernet",
+            "IPv4",
+            "TCP"
+          ],
+          "uci": "02:00:00:00:00:0c/02:00:00:00:00:0f//IPv4/192.0.2.6/192.0.2.2/80/57212/Ethernet:IPv4:TCP"
+        },
+        {
+          "mac": "02:00:00:00:00:0b",
+          "ip": "",
+          "port": 0,
+          "protocols": [
+            "Ethernet",
+            "LLDP"
+          ],
+          "uci": "02:00:00:00:00:0b/01:80:c2:00:00:0e///////Ethernet:LLDP"
+        },
+        {
+          "mac": "02:00:00:00:00:07",
+          "ip": "",
+          "port": 0,
+          "protocols": [
+            "Ethernet",
+            "LLDP"
+          ],
+          "uci": "02:00:00:00:00:07/01:80:c2:00:00:0e///////Ethernet:LLDP"
+        }
+      ]
+    },
+    {
+      "group_id": 4,
+      "module": "boundary",
+      "primary_type": "interarrival_time_low",
+      "start_time": "2025-03-20T08:45:00Z",
+      "end_time": "2025-03-20T09:10:00Z",
+      "is_active": false,
+      "is_confirmed": true,
+      "anomaly_count": 23,
+      "entity_count": 2,
+      "type_stats": [
+        {
+          "type": "interarrival_time_low",
+          "count": 15
+        },
+        {
+          "type": "packet_count_high",
+          "count": 8
+        }
+      ],
+      "entities": [
+        {
+          "mac": "02:00:00:00:00:01",
+          "ip": "",
+          "port": 0,
+          "protocols": [
+            "Ethernet",
+            "LLDP"
+          ],
+          "uci": "02:00:00:00:00:01/01:80:c2:00:00:0e///////Ethernet:LLDP"
+        },
+        {
+          "mac": "02:00:00:00:00:10",
+          "ip": "",
+          "port": 0,
+          "protocols": [
+            "Ethernet",
+            "LLDP"
+          ],
+          "uci": "02:00:00:00:00:10/01:80:c2:00:00:0e///////Ethernet:LLDP"
+        }
+      ]
+    },
+    {
+      "group_id": 5,
+      "module": "netcap",
+      "primary_type": "total_volume_high",
+      "start_time": "2025-03-20T12:00:00Z",
+      "end_time": "2025-03-20T12:25:00Z",
+      "is_active": true,
+      "is_confirmed": false,
+      "anomaly_count": 156,
+      "entity_count": 7,
+      "type_stats": [
+        {
+          "type": "total_volume_high",
+          "count": 62
+        },
+        {
+          "type": "packet_count_high",
+          "count": 48
+        },
+        {
+          "type": "mean_packet_size_high",
+          "count": 31
+        },
+        {
+          "type": "interarrival_time_low",
+          "count": 15
+        }
+      ],
+      "entities": [
+        {
+          "mac": "02:00:00:00:00:0f",
+          "ip": "192.0.2.2",
+          "port": 57212,
+          "protocols": [
+            "Ethernet",
+            "IPv4",
+            "TCP"
+          ],
+          "uci": "02:00:00:00:00:0f/02:00:00:00:00:0c//IPv4/192.0.2.2/192.0.2.6/57212/80/Ethernet:IPv4:TCP"
+        },
+        {
+          "mac": "02:00:00:00:00:0c",
+          "ip": "192.0.2.6",
+          "port": 80,
+          "protocols": [
+            "Ethernet",
+            "IPv4",
+            "TCP",
+            "HTTPResponse"
+          ],
+          "uci": "02:00:00:00:00:0c/02:00:00:00:00:0f//IPv4/192.0.2.6/192.0.2.2/80/57212/Ethernet:IPv4:TCP:HTTPResponse"
+        },
+        {
+          "mac": "02:00:00:00:00:03",
+          "ip": "192.0.2.4",
+          "port": 50000,
+          "protocols": [
+            "Ethernet",
+            "IPv4",
+            "UDP",
+            "PROFINET_DCE_RPC"
+          ],
+          "uci": "02:00:00:00:00:03/02:00:00:00:00:0d//IPv4/192.0.2.4/192.0.2.5/50000/52576/Ethernet:IPv4:UDP:PROFINET_DCE_RPC"
+        },
+        {
+          "mac": "02:00:00:00:00:0d",
+          "ip": "192.0.2.5",
+          "port": 52576,
+          "protocols": [
+            "Ethernet",
+            "IPv4",
+            "UDP",
+            "PROFINET_DCE_RPC"
+          ],
+          "uci": "02:00:00:00:00:0d/02:00:00:00:00:03//IPv4/192.0.2.5/192.0.2.4/52576/50000/Ethernet:IPv4:UDP:PROFINET_DCE_RPC"
+        },
+        {
+          "mac": "02:00:00:00:00:02",
+          "ip": "",
+          "port": 0,
+          "protocols": [
+            "Ethernet",
+            "VLAN",
+            "PROFINET_RT",
+            "PROFINET_RT_IO"
+          ],
+          "uci": "02:00:00:00:00:02/02:00:00:00:00:08/0//////Ethernet:VLAN:PROFINET_RT:PROFINET_RT_IO"
+        },
+        {
+          "mac": "02:00:00:00:00:08",
+          "ip": "",
+          "port": 0,
+          "protocols": [
+            "Ethernet",
+            "VLAN",
+            "PROFINET_RT",
+            "PROFINET_RT_IO"
+          ],
+          "uci": "02:00:00:00:00:08/02:00:00:00:00:02/0//////Ethernet:VLAN:PROFINET_RT:PROFINET_RT_IO"
+        },
+        {
+          "mac": "02:00:00:00:00:09",
+          "ip": "",
+          "port": 0,
+          "protocols": [
+            "Ethernet",
+            "LLDP"
+          ],
+          "uci": "02:00:00:00:00:09/01:80:c2:00:00:0e///////Ethernet:LLDP"
+        }
+      ]
+    },
+    {
+      "group_id": 6,
+      "module": "boundary",
+      "primary_type": "packet_count_low",
+      "start_time": "2025-03-20T07:15:00Z",
+      "end_time": "2025-03-20T07:40:00Z",
+      "is_active": false,
+      "is_confirmed": true,
+      "anomaly_count": 31,
+      "entity_count": 2,
+      "type_stats": [
+        {
+          "type": "packet_count_low",
+          "count": 22
+        },
+        {
+          "type": "total_volume_low",
+          "count": 9
+        }
+      ],
+      "entities": [
+        {
+          "mac": "02:00:00:00:00:03",
+          "ip": "",
+          "port": 0,
+          "protocols": [
+            "Ethernet",
+            "VLAN",
+            "PROFINET_RT",
+            "PROFINET_RT_IO"
+          ],
+          "uci": "02:00:00:00:00:03/02:00:00:00:00:0d/0//////Ethernet:VLAN:PROFINET_RT:PROFINET_RT_IO"
+        },
+        {
+          "mac": "02:00:00:00:00:0d",
+          "ip": "",
+          "port": 0,
+          "protocols": [
+            "Ethernet",
+            "VLAN",
+            "PROFINET_RT",
+            "PROFINET_RT_IO"
+          ],
+          "uci": "02:00:00:00:00:0d/02:00:00:00:00:03/0//////Ethernet:VLAN:PROFINET_RT:PROFINET_RT_IO"
+        }
+      ]
+    },
+    {
+      "group_id": 7,
+      "module": "netcap",
+      "primary_type": "interarrival_time_high",
+      "start_time": "2025-03-20T13:10:00Z",
+      "end_time": "2025-03-20T13:35:00Z",
+      "is_active": false,
+      "is_confirmed": false,
+      "anomaly_count": 64,
+      "entity_count": 3,
+      "type_stats": [
+        {
+          "type": "interarrival_time_high",
+          "count": 34
+        },
+        {
+          "type": "packet_count_low",
+          "count": 18
+        },
+        {
+          "type": "total_volume_low",
+          "count": 12
+        }
+      ],
+      "entities": [
+        {
+          "mac": "02:00:00:00:00:0f",
+          "ip": "192.0.2.2",
+          "port": 57212,
+          "protocols": [
+            "Ethernet",
+            "IPv4",
+            "TCP",
+            "HTTPRequest"
+          ],
+          "uci": "02:00:00:00:00:0f/02:00:00:00:00:0c//IPv4/192.0.2.2/192.0.2.6/57212/80/Ethernet:IPv4:TCP:HTTPRequest"
+        },
+        {
+          "mac": "02:00:00:00:00:0e",
+          "ip": "",
+          "port": 0,
+          "protocols": [
+            "Ethernet",
+            "LLDP"
+          ],
+          "uci": "02:00:00:00:00:0e/01:80:c2:00:00:0e///////Ethernet:LLDP"
+        },
+        {
+          "mac": "02:00:00:00:00:01",
+          "ip": "",
+          "port": 0,
+          "protocols": [
+            "Ethernet",
+            "LLDP"
+          ],
+          "uci": "02:00:00:00:00:01/01:80:c2:00:00:0e///////Ethernet:LLDP"
+        }
+      ]
+    },
+    {
+      "group_id": 8,
+      "module": "netcap",
+      "primary_type": "packet_count_high",
+      "start_time": "2025-03-20T14:00:00Z",
+      "end_time": "2025-03-20T14:20:00Z",
+      "is_active": false,
+      "is_confirmed": true,
+      "anomaly_count": 95,
+      "entity_count": 6,
+      "type_stats": [
+        {
+          "type": "packet_count_high",
+          "count": 40
+        },
+        {
+          "type": "total_volume_high",
+          "count": 28
+        },
+        {
+          "type": "mean_packet_size_low",
+          "count": 17
+        },
+        {
+          "type": "interarrival_time_low",
+          "count": 10
+        }
+      ],
+      "entities": [
+        {
+          "mac": "02:00:00:00:00:0f",
+          "ip": "192.0.2.2",
+          "port": 57212,
+          "protocols": [
+            "Ethernet",
+            "IPv4",
+            "TCP"
+          ],
+          "uci": "02:00:00:00:00:0f/02:00:00:00:00:0c//IPv4/192.0.2.2/192.0.2.6/57212/80/Ethernet:IPv4:TCP"
+        },
+        {
+          "mac": "02:00:00:00:00:0c",
+          "ip": "192.0.2.6",
+          "port": 80,
+          "protocols": [
+            "Ethernet",
+            "IPv4",
+            "TCP"
+          ],
+          "uci": "02:00:00:00:00:0c/02:00:00:00:00:0f//IPv4/192.0.2.6/192.0.2.2/80/57212/Ethernet:IPv4:TCP"
+        },
+        {
+          "mac": "02:00:00:00:00:03",
+          "ip": "192.0.2.4",
+          "port": 50000,
+          "protocols": [
+            "Ethernet",
+            "IPv4",
+            "UDP",
+            "PROFINET_DCE_RPC"
+          ],
+          "uci": "02:00:00:00:00:03/02:00:00:00:00:0d//IPv4/192.0.2.4/192.0.2.5/50000/52576/Ethernet:IPv4:UDP:PROFINET_DCE_RPC"
+        },
+        {
+          "mac": "02:00:00:00:00:0d",
+          "ip": "192.0.2.5",
+          "port": 52576,
+          "protocols": [
+            "Ethernet",
+            "IPv4",
+            "UDP",
+            "PROFINET_DCE_RPC"
+          ],
+          "uci": "02:00:00:00:00:0d/02:00:00:00:00:03//IPv4/192.0.2.5/192.0.2.4/52576/50000/Ethernet:IPv4:UDP:PROFINET_DCE_RPC"
+        },
+        {
+          "mac": "02:00:00:00:00:09",
+          "ip": "",
+          "port": 0,
+          "protocols": [
+            "Ethernet",
+            "PROFINET_RT",
+            "PROFINET_RT_PTCP"
+          ],
+          "uci": "02:00:00:00:00:09/01:80:c2:00:00:0e///////Ethernet:PROFINET_RT:PROFINET_RT_PTCP"
+        },
+        {
+          "mac": "02:00:00:00:00:0b",
+          "ip": "",
+          "port": 0,
+          "protocols": [
+            "Ethernet",
+            "LLDP"
+          ],
+          "uci": "02:00:00:00:00:0b/01:80:c2:00:00:0e///////Ethernet:LLDP"
+        }
+      ]
+    },
+    {
+      "group_id": 9,
+      "module": "boundary",
+      "primary_type": "mean_packet_size_low",
+      "start_time": "2025-03-20T15:00:00Z",
+      "end_time": "2025-03-20T15:15:00Z",
+      "is_active": false,
+      "is_confirmed": false,
+      "anomaly_count": 19,
+      "entity_count": 1,
+      "type_stats": [
+        {
+          "type": "mean_packet_size_low",
+          "count": 14
+        },
+        {
+          "type": "packet_count_low",
+          "count": 5
+        }
+      ],
+      "entities": [
+        {
+          "mac": "02:00:00:00:00:03",
+          "ip": "",
+          "port": 0,
+          "protocols": [
+            "Ethernet",
+            "PROFINET_RT",
+            "PROFINET_RT_IO"
+          ],
+          "uci": "02:00:00:00:00:03/02:00:00:00:00:0d///////Ethernet:PROFINET_RT:PROFINET_RT_IO"
+        }
+      ]
+    },
+    {
+      "group_id": 10,
+      "module": "netcap",
+      "primary_type": "total_volume_high",
+      "start_time": "2025-03-20T16:05:00Z",
+      "end_time": null,
+      "is_active": true,
+      "is_confirmed": false,
+      "anomaly_count": 203,
+      "entity_count": 8,
+      "type_stats": [
+        {
+          "type": "total_volume_high",
+          "count": 78
+        },
+        {
+          "type": "packet_count_high",
+          "count": 55
+        },
+        {
+          "type": "mean_packet_size_high",
+          "count": 42
+        },
+        {
+          "type": "interarrival_time_low",
+          "count": 28
+        }
+      ],
+      "entities": [
+        {
+          "mac": "02:00:00:00:00:0f",
+          "ip": "192.0.2.2",
+          "port": 57212,
+          "protocols": [
+            "Ethernet",
+            "IPv4",
+            "TCP",
+            "HTTPRequest"
+          ],
+          "uci": "02:00:00:00:00:0f/02:00:00:00:00:0c//IPv4/192.0.2.2/192.0.2.6/57212/80/Ethernet:IPv4:TCP:HTTPRequest"
+        },
+        {
+          "mac": "02:00:00:00:00:0c",
+          "ip": "192.0.2.6",
+          "port": 80,
+          "protocols": [
+            "Ethernet",
+            "IPv4",
+            "TCP",
+            "HTTPResponse"
+          ],
+          "uci": "02:00:00:00:00:0c/02:00:00:00:00:0f//IPv4/192.0.2.6/192.0.2.2/80/57212/Ethernet:IPv4:TCP:HTTPResponse"
+        },
+        {
+          "mac": "02:00:00:00:00:03",
+          "ip": "192.0.2.4",
+          "port": 50000,
+          "protocols": [
+            "Ethernet",
+            "IPv4",
+            "UDP",
+            "PROFINET_DCE_RPC"
+          ],
+          "uci": "02:00:00:00:00:03/02:00:00:00:00:0d//IPv4/192.0.2.4/192.0.2.5/50000/52576/Ethernet:IPv4:UDP:PROFINET_DCE_RPC"
+        },
+        {
+          "mac": "02:00:00:00:00:0d",
+          "ip": "192.0.2.5",
+          "port": 52576,
+          "protocols": [
+            "Ethernet",
+            "IPv4",
+            "UDP",
+            "PROFINET_DCE_RPC"
+          ],
+          "uci": "02:00:00:00:00:0d/02:00:00:00:00:03//IPv4/192.0.2.5/192.0.2.4/52576/50000/Ethernet:IPv4:UDP:PROFINET_DCE_RPC"
+        },
+        {
+          "mac": "02:00:00:00:00:02",
+          "ip": "",
+          "port": 0,
+          "protocols": [
+            "Ethernet",
+            "PROFINET_RT",
+            "PROFINET_RT_IO"
+          ],
+          "uci": "02:00:00:00:00:02/02:00:00:00:00:08///////Ethernet:PROFINET_RT:PROFINET_RT_IO"
+        },
+        {
+          "mac": "02:00:00:00:00:08",
+          "ip": "",
+          "port": 0,
+          "protocols": [
+            "Ethernet",
+            "VLAN",
+            "PROFINET_RT",
+            "PROFINET_RT_IO"
+          ],
+          "uci": "02:00:00:00:00:08/02:00:00:00:00:02/0//////Ethernet:VLAN:PROFINET_RT:PROFINET_RT_IO"
+        },
+        {
+          "mac": "02:00:00:00:00:09",
+          "ip": "",
+          "port": 0,
+          "protocols": [
+            "Ethernet",
+            "PROFINET_RT",
+            "PROFINET_RT_PTCP"
+          ],
+          "uci": "02:00:00:00:00:09/01:80:c2:00:00:0e///////Ethernet:PROFINET_RT:PROFINET_RT_PTCP"
+        },
+        {
+          "mac": "02:00:00:00:00:10",
+          "ip": "",
+          "port": 0,
+          "protocols": [
+            "Ethernet",
+            "LLDP"
+          ],
+          "uci": "02:00:00:00:00:10/01:80:c2:00:00:0e///////Ethernet:LLDP"
+        }
+      ]
+    }
+  ]
+}

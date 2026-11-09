@@ -1,0 +1,30 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8091
+  },
+  "postgres": {
+    "dsn": "$POSTGRES_DSN"
+  },
+  "modules": {
+    "path": "src/otalon_scan/modules"
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "otalon-scan.log",
+    "level_console": "INFO",
+    "level_file": "INFO",
+    "file_path": "logs/application.log",
+    "file_rotation": "1 week",
+    "file_retention": "4 weeks",
+    "file_compression": "zip",
+    "format": "{time} {level} {file}:{line} {message}",
+    "format_console": "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <white>{file}:{line}</white> | <cyan>{message}</cyan>"
+  },
+  "network": {
+    "default_interface": "enp4s0"
+  },
+  "system": {
+    "arp_table_path": "/proc/net/arp"
+  }
+}

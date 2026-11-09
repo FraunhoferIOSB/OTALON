@@ -1,0 +1,1576 @@
+LLDP-EXT-PNO-MIB DEFINITIONS ::= BEGIN
+
+IMPORTS
+    Unsigned32,
+    MODULE-IDENTITY,
+    Integer32,
+    OBJECT-TYPE            FROM SNMPv2-SMI
+    MacAddress,
+    DisplayString,
+    TruthValue             FROM SNMPv2-TC
+    MODULE-COMPLIANCE,
+    OBJECT-GROUP           FROM SNMPv2-CONF
+    AddressFamilyNumbers   FROM IANA-ADDRESS-FAMILY-NUMBERS-MIB
+    lldpExtensions,
+    lldpRemTimeMark,
+    lldpRemLocalPortNum,
+    lldpRemIndex,
+    lldpPortConfigEntry,
+    lldpLocPortNum,
+    LldpManAddress         FROM LLDP-MIB;
+
+lldpXPnoMIB                MODULE-IDENTITY
+    LAST-UPDATED           "202303310000Z" -- Mar 31, 2023
+    ORGANIZATION           "PROFIBUS & PROFINET INTERNATIONAL (PI)"
+    CONTACT-INFO           "
+                           URL:    http://www.profibus.com
+                           email:  info@profibus.com
+
+                           Postal: Haid-und-Neu-Strasse 7
+                                   D-76131 Karlsruhe
+
+                           Tel:    +49 721 9658 - 590
+                           "
+    DESCRIPTION            "
+                           The LLDP Management Information Base extension module for
+                           PROFINET organizationally defined discovery information.
+
+                           Copyright (C) PROFIBUS Nutzerorganisation e.V. (2021).
+                           "
+    REVISION               "202303150000Z" -- Mar 15, 2023
+    DESCRIPTION            "
+                           added MRP Interconnection object MicPosition.
+                           "
+    REVISION               "202105010000Z" -- May 01, 2021
+    DESCRIPTION            "
+                           added TSN objects.
+                           "
+    REVISION               "201805010000Z" -- May 01, 2018
+    DESCRIPTION            "
+                           added MRP interconnection objects.
+                           "
+    REVISION               "201605010000Z" -- May 01, 2016
+    DESCRIPTION            "
+                           adjusted MrpUuId object descriptions to the given
+                           IEC 61158-6-10 reference;
+                           MRRT will never be implemented by PNIO, so off(0) is the 
+                           only allowed value for the MrrtStatus objects.
+                           "
+    REVISION               "201505010000Z" -- May 01, 2015
+    DESCRIPTION            "
+                           added MAU Type Extension to local and remote port tables
+                           "
+    REVISION               "200602280000Z" -- February 28, 2006
+    DESCRIPTION            "
+                           added MRP UUID information, port status values and
+                           naming of tables changed
+                           "
+    REVISION               "200508310000Z" -- August 31, 2005
+    DESCRIPTION            "added RT port status"
+    REVISION               "200505300000Z" -- May 30, 2005
+    DESCRIPTION            "initial version"
+-- OUI for PROFIBUS Nutzerorganisation e.V. 3791 (00-0E-CF)
+    ::= { lldpExtensions 3791 }
+
+------------------------------------------------------------------------------
+--
+-- Organizationally Defined Information Extension - IEC61158-TYPE10
+--
+------------------------------------------------------------------------------
+
+lldpXPnoObjects            OBJECT IDENTIFIER ::= { lldpXPnoMIB 1 }
+
+-- LLDP IEC61158-TYPE10 extension MIB groups
+lldpXPnoConfig             OBJECT IDENTIFIER ::= { lldpXPnoObjects 1 }
+lldpXPnoLocalData          OBJECT IDENTIFIER ::= { lldpXPnoObjects 2 }
+lldpXPnoRemoteData         OBJECT IDENTIFIER ::= { lldpXPnoObjects 3 }
+
+------------------------------------------------------------------------------
+-- IEC61158-TYPE10 - Configuration
+------------------------------------------------------------------------------
+
+lldpXPnoConfigTable        OBJECT-TYPE
+    SYNTAX                 SEQUENCE OF LldpXPnoConfigEntry
+    MAX-ACCESS             not-accessible
+    STATUS                 current
+    DESCRIPTION            "
+                           A table that controls selection of LLDP
+                           TLVs to be transmitted on individual ports.
+                           "
+    ::= { lldpXPnoConfig 1 }
+
+lldpXPnoConfigEntry        OBJECT-TYPE
+    SYNTAX                 LldpXPnoConfigEntry
+    MAX-ACCESS             not-accessible
+    STATUS                 current
+    DESCRIPTION            "
+                           LLDP configuration information that controls the
+                           transmission of IEC61158-TYPE10 organizationally
+                           defined TLVs on LLDP transmission capable ports.
+
+                           This configuration object augments the
+                           lldpPortConfigEntry of the LLDP-MIB, therefore it
+                           is only present along with the port configuration
+                           defined by the associated lldpPortConfigEntry entry.
+
+                           Each active lldpXPnoConfigEntry shall be restored
+                           from non-volatile storage (along with the corresponding
+                           lldpPortConfigEntry) after a re-initialization of the
+                           management system.
+                           "
+    AUGMENTS               { lldpPortConfigEntry}
+    ::= { lldpXPnoConfigTable 1 }
+
+LldpXPnoConfigEntry ::=    SEQUENCE {
+    lldpXPnoConfigSPDTxEnable              TruthValue,
+    lldpXPnoConfigPortStatusTxEnable       TruthValue,
+    lldpXPnoConfigAliasTxEnable            TruthValue,
+    lldpXPnoConfigMrpTxEnable              TruthValue,
+    lldpXPnoConfigPtcpTxEnable             TruthValue,
+    lldpXPnoConfigMAUTypeExtensionTxEnable TruthValue,
+    lldpXPnoConfigMrpIcTxEnable            TruthValue,
+    lldpXPnoConfigTsnTxEnable              TruthValue
+}
+
+lldpXPnoConfigSPDTxEnable  OBJECT-TYPE
+    SYNTAX                 TruthValue
+    MAX-ACCESS             read-write
+    STATUS                 current
+    DESCRIPTION            "
+                           The lldpXPnoConfigSPDTxEnable, which is defined as
+                           a truth value and configured by the network management,
+                           determines whether the IEC61158-TYPE10 organizationally
+                           defined signal propagation delay TLV transmission is
+                           allowed on a given LLDP transmission capable port.
+
+                           The signal propagation delay is composed of the port
+                           transmission delay, the port receiving delay and the line
+                           delay. These values can't be transmitted independently of
+                           each other.
+                           "
+    DEFVAL                 { true }
+    ::= { lldpXPnoConfigEntry 1 }
+
+lldpXPnoConfigPortStatusTxEnable    OBJECT-TYPE
+    SYNTAX                 TruthValue
+    MAX-ACCESS             read-write
+    STATUS                 current
+    DESCRIPTION            "
+                           The lldpXPnoConfigPortStatusTxEnable, which is defined as
+                           a truth value and configured by the network management,
+                           determines whether the IEC61158-TYPE10 organizationally
+                           defined RT port status TLV transmission is allowed on a
+                           given LLDP transmission capable port.
+                           "
+    DEFVAL                 { true }
+    ::= { lldpXPnoConfigEntry 2 }
+
+lldpXPnoConfigAliasTxEnable         OBJECT-TYPE
+    SYNTAX                 TruthValue
+    MAX-ACCESS             read-write
+    STATUS                 current
+    DESCRIPTION            "
+                           The lldpXPnoConfigAliasTxEnable, which is defined as
+                           a truth value and configured by the network management,
+                           determines whether the IEC61158-TYPE10 organizationally
+                           defined alias TLV (chassisId) transmission is allowed
+                           on a given LLDP transmission capable port.
+                           "
+    DEFVAL                 { true }
+    ::= { lldpXPnoConfigEntry 3 }
+
+lldpXPnoConfigMrpTxEnable  OBJECT-TYPE
+    SYNTAX                 TruthValue
+    MAX-ACCESS             read-write
+    STATUS                 current
+    DESCRIPTION            "
+                           The lldpXPnoConfigMrpTxEnable, which is defined as
+                           a truth value and configured by the network management,
+                           determines whether the IEC61158-TYPE10 organizationally
+                           defined MRP TLV transmission is allowed on a given
+                           LLDP transmission capable port.
+                           "
+    DEFVAL                 { true }
+    ::= { lldpXPnoConfigEntry 4 }
+
+lldpXPnoConfigPtcpTxEnable OBJECT-TYPE
+    SYNTAX                 TruthValue
+    MAX-ACCESS             read-write
+    STATUS                 current
+    DESCRIPTION            "
+                           The lldpXPnoConfigPtcpTxEnable, which is defined as
+                           a truth value and configured by the network management,
+                           determines whether the IEC61158-TYPE10 organizationally
+                           defined PTCP TLV transmission is allowed on a given
+                           LLDP transmission capable port.
+                           "
+    DEFVAL                 { true }
+    ::= { lldpXPnoConfigEntry 5 }
+
+lldpXPnoConfigMAUTypeExtensionTxEnable  OBJECT-TYPE
+    SYNTAX                 TruthValue
+    MAX-ACCESS             read-write
+    STATUS                 current
+    DESCRIPTION            "
+                           The lldpXPnoConfigMAUTypeExtensionTxEnable, which is defined
+                           as a truth value and configured by the network management,
+                           determines whether the IEC61158-TYPE10 organizationally
+                           defined MAUTypeExtension transmission is allowed on a given
+                           LLDP transmission capable port.
+                           "
+    DEFVAL                 { true }
+    ::= { lldpXPnoConfigEntry 6 }
+
+lldpXPnoConfigMrpIcTxEnable  OBJECT-TYPE
+    SYNTAX                 TruthValue
+    MAX-ACCESS             read-write
+    STATUS                 current
+    DESCRIPTION            "
+                           The lldpXPnoConfigMrpIcTxEnable, which is defined as
+                           a truth value and configured by the network management,
+                           determines whether the IEC61158-TYPE10 organizationally
+                           defined MRP IC TLV transmission is allowed on a given
+                           LLDP transmission capable port.
+                           "
+    DEFVAL                 { true }
+    ::= { lldpXPnoConfigEntry 7 }
+
+lldpXPnoConfigTsnTxEnable  OBJECT-TYPE
+    SYNTAX                 TruthValue
+    MAX-ACCESS             read-write
+    STATUS                 current
+    DESCRIPTION            "
+                           The lldpXPnoConfigTsnTxEnable, which is defined as
+                           a truth value and configured by the network management,
+                           determines whether the IEC61158-TYPE10 organizationally
+                           defined TSN TLV transmission is allowed on a given
+                           LLDP transmission capable port.
+                           "
+    DEFVAL                 { true }
+    ::= { lldpXPnoConfigEntry 8 }
+
+
+------------------------------------------------------------------------------
+-- IEC61158-TYPE10 - Local System Information
+------------------------------------------------------------------------------
+
+lldpXPnoLocTable           OBJECT-TYPE
+    SYNTAX                 SEQUENCE OF LldpXPnoLocEntry
+    MAX-ACCESS             not-accessible
+    STATUS                 current
+    DESCRIPTION            "
+                           This table contains one row per port for IEC61158-TYPE10
+                           organizationally defined LLDP extension on the
+                           local system known to this agent.
+                           "
+    ::= { lldpXPnoLocalData 1 }
+
+lldpXPnoLocEntry           OBJECT-TYPE
+    SYNTAX                 LldpXPnoLocEntry
+    MAX-ACCESS             not-accessible
+    STATUS                 current
+    DESCRIPTION            "
+                           Additional information about a particular port
+                           component.
+
+                           This object is indexed by the lldpLocPortNum
+                           of the LLDP-MIB, therefore it is only present
+                           along with the port entry defined by the
+                           associated lldpLocPortEntry entry.
+
+                           Each active lldpXPnoLocEntry shall be restored
+                           from non-volatile storage (along with the
+                           corresponding lldpLocPortEntry) after a
+                           re-initialization of the management system.
+                           "
+    INDEX                  { lldpLocPortNum  }
+    ::= { lldpXPnoLocTable 1 }
+
+LldpXPnoLocEntry ::=       SEQUENCE {
+    lldpXPnoLocLPDValue                                 Unsigned32,
+    lldpXPnoLocPortTxDValue                             Unsigned32,
+    lldpXPnoLocPortRxDValue                             Unsigned32,
+    lldpXPnoLocPortStatusRT2                            INTEGER,
+    lldpXPnoLocPortStatusRT3                            INTEGER,
+    lldpXPnoLocPortNoS                                  DisplayString,
+    lldpXPnoLocPortMrpUuId                              OCTET STRING,
+    lldpXPnoLocPortMrrtStatus                           INTEGER,
+    lldpXPnoLocPortPtcpMaster                           MacAddress,
+    lldpXPnoLocPortPtcpSubdomainUUID                    OCTET STRING,
+    lldpXPnoLocPortPtcpIRDataUUID                       OCTET STRING,
+    lldpXPnoLocPortModeRT3                              INTEGER,
+    lldpXPnoLocPortPeriodLength                         Unsigned32,
+    lldpXPnoLocPortPeriodValidity                       TruthValue,
+    lldpXPnoLocPortRedOffset                            Unsigned32,
+    lldpXPnoLocPortRedValidity                          TruthValue,
+    lldpXPnoLocPortOrangeOffset                         Unsigned32,
+    lldpXPnoLocPortOrangeValidity                       TruthValue,
+    lldpXPnoLocPortGreenOffset                          Unsigned32,
+    lldpXPnoLocPortGreenValidity                        TruthValue,
+    lldpXPnoLocPortStatusRT3OptimizationSupported       TruthValue,
+    lldpXPnoLocPortStatusRT3PreambleShorteningSupported TruthValue,
+    lldpXPnoLocPortStatusRT3PreambleShortening          TruthValue,
+    lldpXPnoLocPortStatusRT3FragmentationSupported      TruthValue,
+    lldpXPnoLocPortStatusRT3Fragmentation               TruthValue,
+    lldpXPnoLocPortOperMauTypeExtension                 Unsigned32,
+    lldpXPnoLocPortMrpIcRole                            Unsigned32,
+    lldpXPnoLocPortMrpIcDomainId                        Unsigned32,
+    lldpXPnoLocTsnDomainName                            DisplayString,
+    lldpXPnoLocTsnDomainUUID                            OCTET STRING,
+    lldpXPnoLocTsnNmeName                               DisplayString,
+    lldpXPnoLocTsnNmeUUID                               OCTET STRING,
+    lldpXPnoLocTsnNmeParameterUUID                      OCTET STRING,
+    lldpXPnoLocTsnNmeAddrSubtype                        AddressFamilyNumbers,
+    lldpXPnoLocTsnNmeAddr                               LldpManAddress,
+    lldpXPnoLocTsnNmeAddrLen                            Integer32,
+    lldpXPnoLocPortMrpIcMicPosition                     Unsigned32
+}
+   
+lldpXPnoLocLPDValue        OBJECT-TYPE
+    SYNTAX                 Unsigned32
+    UNITS                  "ns"
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           This integer value represents the line propagation
+                           delay in nanoseconds which was measured by the local
+                           system on the given port.
+
+                           A value of zero shall be used if the system either
+                           could not accomplish the measurement or does not support
+                           such a measurement.
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field CableDelayLocal"
+    DEFVAL                 { 0 }
+    ::= { lldpXPnoLocEntry 1 }
+
+lldpXPnoLocPortTxDValue    OBJECT-TYPE
+    SYNTAX                 Unsigned32
+    UNITS                  "ns"
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           This integer value represents the PortTxDelay
+                           in nanoseconds which was measured by the local
+                           system on the given port.
+
+                           A value of zero shall be used if the system either
+                           could not accomplish the measurement or does not
+                           support such a measurement.
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field PTCP_PortTxDelayLocal"
+    DEFVAL                 { 0 }
+    ::= { lldpXPnoLocEntry 2 }
+
+lldpXPnoLocPortRxDValue    OBJECT-TYPE
+    SYNTAX                 Unsigned32
+    UNITS                  "ns"
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           This integer value represents the PortRxDelay
+                           in nanoseconds which was measured by the local
+                           system on the given port.
+
+                           A value of zero shall be used if the system either
+                           could not accomplish the measurement or does not
+                           support such a measurement.
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field PTCP_PortRxDelayLocal"
+    DEFVAL                 { 0 }
+    ::= { lldpXPnoLocEntry 3 }
+
+lldpXPnoLocPortStatusRT2   OBJECT-TYPE
+    SYNTAX                 INTEGER {
+                               off(0),
+                               configured(1),
+                               running(2)
+                           }
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           This value represents the status of the given
+                           port of the local system according to RT class 2.
+
+                           A value of off(0) means that there isn't any RT2
+                           capability available for this port. When the port is
+                           configured for RT2 mode, but the mode isn't active yet
+                           the value will be configured(1). If the RT2 mode is
+                           configured for this port and the mode is active, the
+                           value will be running(2).
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                                Coding of the field RTClass2_PortStatus, Bit 0-1"
+    ::= { lldpXPnoLocEntry 4 }
+
+lldpXPnoLocPortStatusRT3   OBJECT-TYPE
+    SYNTAX                 INTEGER {
+                               off(0),
+                               configured(1),
+                               up(2),
+                               down(3),
+                               running(4)
+                           }
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           This value represents the status of the given
+                           port of the local system according to RT class 3.
+
+                           A value of off(0) means that there isn't any RT3
+                           capability available for this port. When the port is
+                           configured for RT3 mode, but the mode isn't active yet
+                           the value will be configured(1).
+                           When the port is ready for transmission and reception
+                           of RT3 traffic, the port status will be running(4).
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                                Coding of the field RTClass3_PortStatus, Bit 0-2"
+    ::= { lldpXPnoLocEntry 5 }
+
+lldpXPnoLocPortNoS         OBJECT-TYPE
+    SYNTAX                 DisplayString
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The local PROFINET NameofStation. If the station isn't
+                           configured yet, the value of this object will be the
+                           MAC address of the device as a string.
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field LLDP_ChassisID
+                            IEC 61158-6-10: Coding of the field LLDP_PortID"
+    ::= { lldpXPnoLocEntry 6 }
+    
+lldpXPnoLocPortMrpUuId     OBJECT-TYPE
+    SYNTAX                 OCTET STRING (SIZE (16))
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The UUID of the MRP domain to which this port belongs to.
+                           Deviating from the MRP_DomainUUID coding definition,
+                           which is given as IEC 61158-6-10 reference below, the
+                           object value shall be set to NIL ('0000000000000000'), if
+                           MRP is not supported or activated on the given port.
+                           No LLDP_PNIO_MRPPORTSTATUS TLV will be delivered to an
+                           attached remote port in this case.
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field MRP_DomainUUID"
+    ::= { lldpXPnoLocEntry 7 }
+    
+lldpXPnoLocPortMrrtStatus  OBJECT-TYPE
+    SYNTAX                 INTEGER {
+                               off(0)
+                           }
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           This object reports the status of the MRRT entity of the
+                           given port.
+                           The value off(0) means that there isn't any MRRT
+                           capability available for this port.
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field MRRT_PortStatus"
+    ::= { lldpXPnoLocEntry 8 }
+
+lldpXPnoLocPortPtcpMaster  OBJECT-TYPE
+    SYNTAX                 MacAddress
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The interface MAC address of the PTCP sync master device
+                           of the PTCP subdomain. If unknown it shall be set to zero.
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                                Coding of the field PTCP_MasterSourceAddress"
+    ::= { lldpXPnoLocEntry 9 }
+
+lldpXPnoLocPortPtcpSubdomainUUID    OBJECT-TYPE
+    SYNTAX                 OCTET STRING (SIZE (16))
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The UUID of the PTCP subdomain to which this port belongs
+                           to. If the port doesn't belong to a PTCP subdomain or the
+                           subdomain is invalid or unknown the value of this object
+                           shall be NIL ('0000000000000000').
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field PTCP_SubdomainUUID"
+    ::= { lldpXPnoLocEntry 10 }
+
+lldpXPnoLocPortPtcpIRDataUUID OBJECT-TYPE
+    SYNTAX                 OCTET STRING (SIZE (16))
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The UUID of the IR data domain to which this port belongs
+                           to. If the port doesn't belong to a IR data domain or the
+                           domain is invalid or unknown the value of this object shall
+                           be NIL ('0000000000000000').
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field IRDataUUID"
+    ::= { lldpXPnoLocEntry 11 }
+
+lldpXPnoLocPortModeRT3     OBJECT-TYPE
+    SYNTAX                 INTEGER
+                           {
+                               optimized(0),
+                               standard(1)
+                           }
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The mode in which the RT3 status is given. If the object is
+                           in standard mode all five values of RT3 status are valid,
+                           else only ...
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                                Coding of the field RTClass3_PortStatus, Bit 15"
+
+    ::= { lldpXPnoLocEntry 12 }
+
+lldpXPnoLocPortPeriodLength    OBJECT-TYPE
+    SYNTAX                 Unsigned32 (0..4000000)
+    UNITS                  "ns"
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           This integer value represents the duration of a cycle
+                           in nanoseconds on the given port.
+                           The value shall be a multiple of 31250 nanoseconds.
+                           The value 0 denotes an unknown duration.
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                                Coding of the field LLDP_LengthOfPeriod, Bit 0-30"
+    ::= { lldpXPnoLocEntry 13 }
+
+lldpXPnoLocPortPeriodValidity  OBJECT-TYPE
+    SYNTAX                 TruthValue
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The value of this object indicates whether the value of 
+                           lldpXPnoLocPortPeriodLength of the according table entry is
+                           valid or not.
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                                Coding of the field LLDP_LengthOfPeriod, Bit 31"
+    ::= { lldpXPnoLocEntry 14 }
+
+lldpXPnoLocPortRedOffset   OBJECT-TYPE
+    SYNTAX                 Unsigned32 (0..3999999) 
+    UNITS                  "ns"
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           This integer value represents the begin of the RT_CLASS_3
+                           period of the cycle of the receive direction on the given 
+                           port as an offset relative to the begin of the cycle in
+                           nanoseconds.
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                              Coding of the field LLDP_RedOrangePeriodBegin, Bit 0-30"
+    ::= { lldpXPnoLocEntry 15 }
+
+lldpXPnoLocPortRedValidity OBJECT-TYPE
+    SYNTAX                 TruthValue
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The value of this object indicates whether the value of 
+                           lldpXPnoLocPortRedOffset of the according table entry is
+                           valid or not.
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                              Coding of the field LLDP_RedOrangePeriodBegin, Bit 31"
+    ::= { lldpXPnoLocEntry 16 }
+
+lldpXPnoLocPortOrangeOffset    OBJECT-TYPE
+    SYNTAX                 Unsigned32 (0..3999999) 
+    UNITS                  "ns"
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           This integer value represents the begin of the RT_CLASS_2
+                           period of the cycle of the receive direction on the given 
+                           port as an offset relative to the begin of the cycle in
+                           nanoseconds.
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                              Coding of the field LLDP_OrangePeriodBegin, Bit 0-30"
+    ::= { lldpXPnoLocEntry 17 }
+
+lldpXPnoLocPortOrangeValidity  OBJECT-TYPE
+    SYNTAX                 TruthValue
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The value of this object indicates whether the value of
+                           lldpXPnoLocPortOrangeOffset of the according table entry is
+                           valid or not.
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                              Coding of the field LLDP_OrangePeriodBegin, Bit 31"
+    ::= { lldpXPnoLocEntry 18 }
+
+lldpXPnoLocPortGreenOffset     OBJECT-TYPE
+    SYNTAX                 Unsigned32 (0..3999999)
+    UNITS                  "ns"
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           This integer value represents the begin of the unrestricted
+                           period of the cycle of the receive direction on the given 
+                           port as an offset relative to the begin of the cycle in
+                           nanoseconds.
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                              Coding of the field LLDP_GreenPeriodBegin, Bit 0-30"
+    ::= { lldpXPnoLocEntry 19 }
+
+lldpXPnoLocPortGreenValidity   OBJECT-TYPE
+    SYNTAX                 TruthValue
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The value of this object indicates whether the value of
+                           lldpXPnoLocPortGreenOffset of the according table entry is
+                           valid or not.
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                              Coding of the field LLDP_GreenPeriodBegin, Bit 31"
+    ::= { lldpXPnoLocEntry 20 }
+
+lldpXPnoLocPortStatusRT3OptimizationSupported OBJECT-TYPE
+    SYNTAX                 TruthValue
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           This value represents the status of the given
+                           port of the local system according to the optimized RTC3PSM.
+                           The value true(1) indicates the support, the value
+                           false(2) indicates no support of the optimized RTC3PSM.
+                           "
+    ::= { lldpXPnoLocEntry 21 }
+
+lldpXPnoLocPortStatusRT3PreambleShorteningSupported OBJECT-TYPE
+    SYNTAX                 TruthValue
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           This value represents the status of the given
+                           port of the local system according to the shortening of the
+                           Preamble.
+                           The value true(1) indicates the support, the value
+                           false(2) indicates no support of the shortening of the 
+                           Preamble.
+                           "
+    ::= { lldpXPnoLocEntry 22 }
+
+lldpXPnoLocPortStatusRT3PreambleShortening OBJECT-TYPE
+    SYNTAX                 TruthValue
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           This value represents the status of the given
+                           port of the local system according to the Preamble lengths.
+                           The value true(1) indicates a Preamble length of one octet,
+                           the value false(2) indicates a Preamble length of seven
+                           octets.
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                                Coding of the field RTClass3_PortStatus, Bit 13"
+    ::= { lldpXPnoLocEntry 23 }
+
+lldpXPnoLocPortStatusRT3FragmentationSupported OBJECT-TYPE
+    SYNTAX                 TruthValue
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           This value represents the status of the given
+                           port of the local system according to the fragmentation.
+                           The value true(1) indicates the support, the value
+                           false(2) indicates no support of fragmentation.
+                           "
+    ::= { lldpXPnoLocEntry 24 }
+
+lldpXPnoLocPortStatusRT3Fragmentation OBJECT-TYPE
+    SYNTAX                 TruthValue
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           This value represents the status of the given
+                           port of the local system according to the fragmentation.
+                           The value true(1) indicates the activation, the value
+                           false(2) indicates the deactivation.
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                                Coding of the field RTClass3_PortStatus, Bit 12"
+    ::= { lldpXPnoLocEntry 25 }
+
+lldpXPnoLocPortOperMauTypeExtension OBJECT-TYPE
+    SYNTAX                 Unsigned32 (0..65535)
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           An integer value that indicates the operational MAU type
+                           extension of the given port on the local system.
+                           The MAU type extension is an administrative number,
+                           which is managed by PI, corresponding to the IEEE 802.3
+                           MAUType.
+                           The value 0 signifies 'no MAU type extension'.
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field MAUTypeExtension"
+    ::= { lldpXPnoLocEntry 26 }
+
+lldpXPnoLocPortMrpIcRole OBJECT-TYPE
+    SYNTAX                 Unsigned32 (0..2)
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           An integer value that indicates the operational MRP
+                           interconnection role of the given port on the local system
+                           with the following values:
+                             0 'no role assigned'
+                             1 'MRP interconnection client (MIC)'
+                             2 'MRP interconnection manager (MIM)'
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field MRPIC_Role"
+    ::= { lldpXPnoLocEntry 27 }
+
+lldpXPnoLocPortMrpIcDomainId OBJECT-TYPE
+    SYNTAX                 Unsigned32 (0..65535)
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           An integer value that indicates the operational MRP
+                           interconnection ID of the given port on the local system.
+                           The value 0 signifies 'no MRP interconnection'.
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field MRPIC_DomainID"
+    ::= { lldpXPnoLocEntry 28 }
+
+lldpXPnoLocTsnDomainName   OBJECT-TYPE
+    SYNTAX                 DisplayString
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The local Name of the TSN Domain.
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field TSNDomainName"
+    ::= { lldpXPnoLocEntry 29 }
+
+lldpXPnoLocTsnDomainUUID   OBJECT-TYPE
+    SYNTAX                 OCTET STRING (SIZE (16))
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The UUID of the TSN Domain to which this port belongs to.
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field TSNDomainUUID"
+    ::= { lldpXPnoLocEntry 30 }
+
+lldpXPnoLocTsnNmeName      OBJECT-TYPE
+    SYNTAX                 DisplayString
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The local Name of the TSN NME.
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field TSNNMEName"
+    ::= { lldpXPnoLocEntry 31 }
+
+lldpXPnoLocTsnNmeUUID      OBJECT-TYPE
+    SYNTAX                 OCTET STRING (SIZE (16))
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The UUID of the TSN NME to which this port belongs to.
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field TSNNMEUUID"
+    ::= { lldpXPnoLocEntry 32 }
+
+lldpXPnoLocTsnNmeParameterUUID OBJECT-TYPE
+    SYNTAX                 OCTET STRING (SIZE (16))
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The UUID of the TSN NME parameter set.
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field NMEParameterUUID"
+    ::= { lldpXPnoLocEntry 33 }
+
+lldpXPnoLocTsnNmeAddrSubtype  OBJECT-TYPE
+    SYNTAX                 AddressFamilyNumbers
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The type of management address identifier encoding used
+                           in the associated 'lldpXPnoLocTsnNmeAddr' object.
+                           "
+    REFERENCE              "IEEE 802.1AB-2016 8.5.9.3"
+    ::= { lldpXPnoLocEntry 34 }
+
+lldpXPnoLocTsnNmeAddr      OBJECT-TYPE
+    SYNTAX                 LldpManAddress
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The string value used to identify the management address
+                           component associated with the TSN NME. The purpose of
+                           this address is to contact the TSN NME entity.
+                           "
+    REFERENCE              "IEEE 802.1AB-2016 8.5.9.4"
+    ::= { lldpXPnoLocEntry 35 }
+
+lldpXPnoLocTsnNmeAddrLen   OBJECT-TYPE
+    SYNTAX                 Integer32
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The total length of the TSN NME address subtype and the
+                           TSN NME address fields in LLDPDUs transmitted by the
+                           local LLDP agent.
+
+                           The TSN NME address length field is needed so that the
+                           receiving systems that do not implement SNMP will not be
+                           required to implement an iana family numbers/address length
+                           equivalency table in order to decode the TSN NME address.
+                           "
+    REFERENCE              "IEEE 802.1AB-2016 8.5.9.2"
+    ::= { lldpXPnoLocEntry 36 }
+
+lldpXPnoLocPortMrpIcMicPosition OBJECT-TYPE
+    SYNTAX                 Unsigned32 (0..1)
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           An integer value that indicates the position, either primary
+                           or secondary, a MIC or MIM is assigned to in the MRP 
+                           interconnection topology on the local system
+                           with the following values:
+                             0 'Primary'
+                             1 'Secondary'
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field MRPIC_MICPosition"
+    ::= { lldpXPnoLocEntry 37 }
+
+
+------------------------------------------------------------------------------
+-- IEC61158-TYPE10 - Remote System Information
+------------------------------------------------------------------------------
+
+lldpXPnoRemTable           OBJECT-TYPE
+    SYNTAX                 SEQUENCE OF LldpXPnoRemEntry
+    MAX-ACCESS             not-accessible
+    STATUS                 current
+    DESCRIPTION            "
+                           This table contains one or more rows per physical network
+                           connection known to this agent. The agent may wish to
+                           ensure that only one lldpXPnoRemEntry is present for
+                           each local port, or it may choose to maintain multiple
+                           lldpXPnoRemEntries for the same local port.
+                           "
+    ::= { lldpXPnoRemoteData 1 }
+
+lldpXPnoRemEntry           OBJECT-TYPE
+    SYNTAX                 LldpXPnoRemEntry
+    MAX-ACCESS             not-accessible
+    STATUS                 current
+    DESCRIPTION            "
+                           Each entry represents the received information of the
+                           communication partner on this physical connection.
+
+                           The entries feature multiple indices from the
+                           lldpRemEntry of the LLDP-MIB, therefore it is
+                           only present along with the description defined
+                           by the associated lldpRemEntry entry.
+                           "
+    INDEX                  { lldpRemTimeMark, lldpRemLocalPortNum, lldpRemIndex }
+    ::= { lldpXPnoRemTable 1 }
+
+LldpXPnoRemEntry ::=       SEQUENCE {
+    lldpXPnoRemLPDValue                         Unsigned32,
+    lldpXPnoRemPortTxDValue                     Unsigned32,
+    lldpXPnoRemPortRxDValue                     Unsigned32,
+    lldpXPnoRemPortStatusRT2                    INTEGER,
+    lldpXPnoRemPortStatusRT3                    INTEGER,
+    lldpXPnoRemPortNoS                          DisplayString,
+    lldpXPnoRemPortMrpUuId                      OCTET STRING,
+    lldpXPnoRemPortMrrtStatus                   INTEGER,
+    lldpXPnoRemPortPtcpMaster                   MacAddress,
+    lldpXPnoRemPortPtcpSubdomainUUID            OCTET STRING,
+    lldpXPnoRemPortPtcpIRDataUUID               OCTET STRING,
+    lldpXPnoRemPortModeRT3                      INTEGER,
+    lldpXPnoRemPortPeriodLength                 Unsigned32,
+    lldpXPnoRemPortPeriodValidity               TruthValue,
+    lldpXPnoRemPortRedOffset                    Unsigned32,
+    lldpXPnoRemPortRedValidity                  TruthValue,
+    lldpXPnoRemPortOrangeOffset                 Unsigned32,
+    lldpXPnoRemPortOrangeValidity               TruthValue,
+    lldpXPnoRemPortGreenOffset                  Unsigned32,
+    lldpXPnoRemPortGreenValidity                TruthValue,
+    lldpXPnoRemPortStatusRT3PreambleShortening  TruthValue,
+    lldpXPnoRemPortStatusRT3Fragmentation       TruthValue,
+    lldpXPnoRemPortOperMauTypeExtension         Unsigned32,
+    lldpXPnoRemPortMrpIcRole                    Unsigned32,
+    lldpXPnoRemPortMrpIcDomainId                Unsigned32,
+    lldpXPnoRemTsnDomainUUID                    OCTET STRING,
+    lldpXPnoRemTsnNmeUUID                       OCTET STRING,
+    lldpXPnoRemTsnNmeParameterUUID              OCTET STRING,
+    lldpXPnoRemTsnNmeAddrSubtype                AddressFamilyNumbers,
+    lldpXPnoRemTsnNmeAddr                       LldpManAddress,
+    lldpXPnoRemPortMrpIcMicPosition             Unsigned32
+}
+
+lldpXPnoRemLPDValue        OBJECT-TYPE
+    SYNTAX                 Unsigned32
+    UNITS                  "ns"
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           This integer value represents the line propagation
+                           delay in nanoseconds which was measured by the remote
+                           system on the given port.
+
+                           A value of zero shall be used if the remote system either
+                           could not accomplish the measurement or does not support
+                           such a measurement.
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field CableDelayLocal"
+    DEFVAL                 { 0 }
+    ::= { lldpXPnoRemEntry 1 }
+    
+lldpXPnoRemPortTxDValue    OBJECT-TYPE
+    SYNTAX                 Unsigned32
+    UNITS                  "ns"
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           This integer value represents the PortTxDelay in
+                           nanoseconds which was measured by the remote
+                           system on the given port.
+
+                           A value of zero shall be used if the remote system either
+                           could not accomplish the measurement or does not support
+                           such a measurement.
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field PTCP_PortTxDelayLocal"
+    DEFVAL                 { 0 }
+    ::= { lldpXPnoRemEntry 2 }
+
+lldpXPnoRemPortRxDValue    OBJECT-TYPE
+    SYNTAX                 Unsigned32
+    UNITS                  "ns"
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           This integer value represents the PortRxDelay in
+                           nanoseconds which was measured by the remote
+                           system on the given port.
+
+                           A value of zero shall be used if the remote system either
+                           could not accomplish the measurement or does not support
+                           such a measurement.
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field PTCP_PortRxDelayLocal"
+    DEFVAL                 { 0 }
+    ::= { lldpXPnoRemEntry 3 }
+
+lldpXPnoRemPortStatusRT2   OBJECT-TYPE
+    SYNTAX                 INTEGER {
+                               off(0),
+                               configured(1),
+                               running(2)
+                           }
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           This value represents the status of the given
+                           port of the remote system according to RT class 2.
+
+                           A value of off(0) means that there isn't any RT2
+                           capability available for this port. When the port is
+                           configured for RT2 mode, but the mode isn't active yet
+                           the value will be configured(1). If the RT2 mode is
+                           configured for this port and the mode is active, the
+                           value will be running(2).
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                                Coding of the field RTClass2_PortStatus, Bit0-1"
+    DEFVAL                 { off }
+    ::= { lldpXPnoRemEntry 4 }
+
+lldpXPnoRemPortStatusRT3   OBJECT-TYPE
+    SYNTAX                 INTEGER {
+                               off(0),
+                               configured(1),
+                               up(2),
+                               down(3),
+                               running(4)
+                           }
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           This value represents the status of the given
+                           port of the remote system according to RT class 3.
+
+                           A value of off(0) means that there isn't any RT3
+                           capability available for this port. When the port is
+                           configured for RT3 mode, but the mode isn't active yet
+                           the value will be configured(1). 
+                           When the port is ready for transmission and reception
+                           of RT3 traffic, the port status will be running(4).
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                                Coding of the field RTClass3_PortStatus, Bit 0-2"
+    DEFVAL                 { off }
+    ::= { lldpXPnoRemEntry 5 }
+
+lldpXPnoRemPortNoS         OBJECT-TYPE
+    SYNTAX                 DisplayString
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The PROFINET NameofStation of the remote partner. If the
+                           station isn't configured yet, the value of this object
+                           will be the MAC address of the device as a string.
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field LLDP_ChassisID
+                            IEC 61158-6-10: Coding of the field LLDP_PortID"
+    DEFVAL                 { "" }
+    ::= { lldpXPnoRemEntry 6 }
+
+lldpXPnoRemPortMrpUuId     OBJECT-TYPE
+    SYNTAX                 OCTET STRING (SIZE (16))
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The UUID of the MRP domain to which the given port of the
+                           remote system belongs to.
+                           Deviating from the MRP_DomainUUID coding definition,
+                           which is given as IEC 61158-6-10 reference below, the
+                           object value shall be set to NIL ('0000000000000000'), if
+                           the given port on the remote system does not provide an
+                           LLDP_PNIO_MRPPORTSTATUS TLV.
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field MRP_DomainUUID"
+    DEFVAL                 { '0000000000000000'H }
+    ::= { lldpXPnoRemEntry 7 }
+
+lldpXPnoRemPortMrrtStatus  OBJECT-TYPE
+    SYNTAX                 INTEGER {
+                               off(0)
+                           }
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           This object reports the status of the MRRT entity of the
+                           given port on the remote system.
+                           The value off(0) means that there isn't any MRRT
+                           capability available for this port.
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field MRRT_PortStatus"
+    DEFVAL                 { off }
+    ::= { lldpXPnoRemEntry 8 }
+
+lldpXPnoRemPortPtcpMaster  OBJECT-TYPE
+    SYNTAX                 MacAddress
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The interface MAC address of the PTCP sync master device
+                           of the PTCP subdomain. If unknown it shall be set to zero.
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                                Coding of the field PTCP_MasterSourceAddress"
+    DEFVAL                 { '000000'H }
+    ::= { lldpXPnoRemEntry 9 }
+
+lldpXPnoRemPortPtcpSubdomainUUID    OBJECT-TYPE
+    SYNTAX                 OCTET STRING (SIZE (16))
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The UUID of the PTCP subdomain to which this port belongs
+                           to. If the port doesn't belong to a PTCP subdomain or the
+                           subdomain is invalid or unknown the value of this object
+                           shall be NIL ('0000000000000000').
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field PTCP_SubdomainUUID"
+    DEFVAL                 { '0000000000000000'H }
+    ::= { lldpXPnoRemEntry 10 }
+
+lldpXPnoRemPortPtcpIRDataUUID       OBJECT-TYPE
+    SYNTAX                 OCTET STRING (SIZE (16))
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The UUID of the IR data domain to which this port belongs
+                           to. If the port doesn't belong to a IR data domain or the
+                           domain is invalid or unknown the value of this object shall
+                           be NIL ('0000000000000000').
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field IRDataUUID"
+    DEFVAL                 { '0000000000000000'H }
+    ::= { lldpXPnoRemEntry 11 }
+
+lldpXPnoRemPortModeRT3     OBJECT-TYPE
+    SYNTAX                 INTEGER
+                           {
+                               optimized(0),
+                               standard(1)
+                           }
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The mode in which the RT3 status is given. If the object is
+                           in standard mode all five values of RT3 status are valid,
+                           else only ...
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                                Coding of the field RTClass3_PortStatus, Bit 15"
+    ::= { lldpXPnoRemEntry 12 }
+
+lldpXPnoRemPortPeriodLength         OBJECT-TYPE
+    SYNTAX                 Unsigned32 (0..4000000)
+    UNITS                  "ns"
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           This integer value represents the duration of a cycle
+                           in nanoseconds on the remote system of the given port.
+                           The value shall be a multiple of 31250 nanoseconds.
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                                Coding of the field LLDP_LengthOfPeriod, Bit 0-30"
+    DEFVAL                 { 0 }
+    ::= { lldpXPnoRemEntry 13 }
+
+lldpXPnoRemPortPeriodValidity       OBJECT-TYPE
+    SYNTAX                 TruthValue
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The value of this object indicates whether the value of
+                           lldpXPnoRemPortPeriodLength of the according table entry is
+                           valid or not.
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                                Coding of the field LLDP_LengthOfPeriod, Bit 31"
+    DEFVAL                 { false }
+    ::= { lldpXPnoRemEntry 14 }
+
+lldpXPnoRemPortRedOffset   OBJECT-TYPE
+    SYNTAX                 Unsigned32 (0..3999999)
+    UNITS                  "ns"
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           This integer value represents the begin of the RT_CLASS_3
+                           period of the cycle of the receive direction on the given
+                           port of the remote system as an offset relative to the begin
+                           of the cycle in nanoseconds.
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                              Coding of the field LLDP_RedOrangePeriodBegin, Bit 0-30"
+    DEFVAL                 { 0 }
+    ::= { lldpXPnoRemEntry 15 }
+
+lldpXPnoRemPortRedValidity OBJECT-TYPE
+    SYNTAX                 TruthValue
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The value of this object indicates whether the value of
+                           lldpXPnoRemPortRedOffset of the according table entry is
+                           valid or not.
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                              Coding of the field LLDP_RedOrangePeriodBegin, Bit 31"
+    DEFVAL                 { false }
+    ::= { lldpXPnoRemEntry 16 }
+
+lldpXPnoRemPortOrangeOffset  OBJECT-TYPE
+    SYNTAX                 Unsigned32 (0..3999999)
+    UNITS                  "ns"
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           This integer value represents the begin of the RT_CLASS_2
+                           period of the cycle of the receive direction on the given
+                           port on the remote system as an offset relative to the
+                           begin of the cycle in nanoseconds.
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                              Coding of the field LLDP_OrangePeriodBegin, Bit 0-30"
+    DEFVAL                 { 0 }
+    ::= { lldpXPnoRemEntry 17 }
+
+lldpXPnoRemPortOrangeValidity  OBJECT-TYPE
+    SYNTAX                 TruthValue
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The value of this object indicates whether the value of
+                           lldpXPnoRemPortOrangeOffset of the according table entry is
+                           valid or not.
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                              Coding of the field LLDP_OrangePeriodBegin, Bit 31"
+    DEFVAL                 { false }
+    ::= { lldpXPnoRemEntry 18 }
+
+lldpXPnoRemPortGreenOffset OBJECT-TYPE
+    SYNTAX                 Unsigned32 (0..3999999)
+    UNITS                  "ns"
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           This integer value represents the begin of the unrestricted
+                           period of the cycle of the receive direction on the given
+                           port of the remote system as an offset relative to the
+                           begin of the cycle in nanoseconds.
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                              Coding of the field LLDP_GreenPeriodBegin, Bit 0-30"
+    DEFVAL                 { 0 }
+    ::= { lldpXPnoRemEntry 19 }
+
+lldpXPnoRemPortGreenValidity  OBJECT-TYPE
+    SYNTAX                 TruthValue
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The value of this object indicates whether the value of
+                           lldpXPnoRemPortGreenOffset of the according table entry is
+                           valid or not.
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                              Coding of the field LLDP_GreenPeriodBegin, Bit 31"
+    DEFVAL                 { false }
+    ::= { lldpXPnoRemEntry 20 }
+
+lldpXPnoRemPortStatusRT3PreambleShortening OBJECT-TYPE
+    SYNTAX                 TruthValue
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           This value represents the status of the given
+                           port of the remote system according to the Preamble lengths.
+                           The value true(1) indicates a Preamble length of one octet,
+                           the value false(2) indicates a Preamble length of seven
+                           octets.
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                                Coding of the field RTClass3_PortStatus, Bit 13"
+    DEFVAL                 { false }
+    ::= { lldpXPnoRemEntry 21 }
+
+lldpXPnoRemPortStatusRT3Fragmentation OBJECT-TYPE
+    SYNTAX                 TruthValue
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           This value represents the status of the given
+                           port of the remote system according to the fragmentation.
+                           The value true(1) indicates the activation, the value
+                           false(2) indicates the deactivation.
+                           "
+    REFERENCE              "IEC 61158-6-10:
+                                Coding of the field RTClass3_PortStatus, Bit 12"
+    DEFVAL                 { false }
+    ::= { lldpXPnoRemEntry 22 }
+
+lldpXPnoRemPortOperMauTypeExtension OBJECT-TYPE
+    SYNTAX                 Unsigned32 (0..65535)
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The integer value that indicates the operational MAU type
+                           extension of the remote system.
+                           The MAU type extension is an administrative number,
+                           which is managed by PI, corresponding to the IEEE 802.3
+                           MAUType.
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field MAUTypeExtension"
+    DEFVAL                 { 0 }
+    ::= { lldpXPnoRemEntry 23 }
+
+lldpXPnoRemPortMrpIcRole OBJECT-TYPE
+    SYNTAX                 Unsigned32 (0..2)
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           An integer value that indicates the operational MRP
+                           interconnection role of the given port on the remote system
+                           with the following values:
+                             0 'no role assigned'
+                             1 'MRP interconnnection client (MIC)'
+                             2 'MRP interconnection manager (MIM)'
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field MRPIC_Role"
+    ::= { lldpXPnoRemEntry 24 }
+
+lldpXPnoRemPortMrpIcDomainId OBJECT-TYPE
+    SYNTAX                 Unsigned32 (0..65535)
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           An integer value that indicates the operational MRP
+                           interconnection ID of the given port on the remote system.
+                           The value 0 signifies 'no MRP interconnection'.
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field MRPIC_DomainID"
+    ::= { lldpXPnoRemEntry 25 }
+
+lldpXPnoRemTsnDomainUUID   OBJECT-TYPE
+    SYNTAX                 OCTET STRING (SIZE (16))
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The UUID of the attached TSN Domain.
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field TSNDomainUUID"
+    ::= { lldpXPnoRemEntry 26 }
+
+lldpXPnoRemTsnNmeUUID      OBJECT-TYPE
+    SYNTAX                 OCTET STRING (SIZE (16))
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The UUID of the attached TSN NME.
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field TSNNMEUUID"
+    ::= { lldpXPnoRemEntry 27 }
+
+lldpXPnoRemTsnNmeParameterUUID OBJECT-TYPE
+    SYNTAX                 OCTET STRING (SIZE (16))
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The UUID of the attached TSN NME parameter set.
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field NMEParameterUUID"
+    ::= { lldpXPnoRemEntry 28 }
+
+lldpXPnoRemTsnNmeAddrSubtype  OBJECT-TYPE
+    SYNTAX                 AddressFamilyNumbers
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The type of management address identifier encoding used
+                           in the associated 'lldpXPnoRemTsnNmeagmentAddr' object.
+                           "
+    REFERENCE              "IEEE 802.1AB-2016 8.5.9.3"
+    ::= { lldpXPnoRemEntry 29 }
+
+lldpXPnoRemTsnNmeAddr      OBJECT-TYPE
+    SYNTAX                 LldpManAddress
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           The string value used to identify the management address
+                           component associated with the remote system.  The purpose
+                           of this address is to contact the management entity.
+                           "
+    REFERENCE              "IEEE 802.1AB-2016 8.5.9.4"
+    ::= { lldpXPnoRemEntry 30 }
+
+lldpXPnoRemPortMrpIcMicPosition OBJECT-TYPE
+    SYNTAX                 Unsigned32 (0..1)
+    MAX-ACCESS             read-only
+    STATUS                 current
+    DESCRIPTION            "
+                           An integer value that indicates the position, either primary
+                           or secondary, a MIC or MIM is assigned to in the MRP 
+                           interconnection topology on the remote system
+                           with the following values:
+                             0 'Primary'
+                             1 'Secondary'
+                           "
+    REFERENCE              "IEC 61158-6-10: Coding of the field MRPIC_MICPosition"
+    ::= { lldpXPnoRemEntry 31 }
+
+------------------------------------------------------------------------------
+-- Conformance Information
+------------------------------------------------------------------------------
+
+lldpXPnoConformance        OBJECT IDENTIFIER ::= { lldpXPnoMIB 2 }
+lldpXPnoCompliances        OBJECT IDENTIFIER ::= { lldpXPnoConformance 1 }
+lldpXPnoGroups             OBJECT IDENTIFIER ::= { lldpXPnoConformance 2 }
+
+-- compliance statements
+
+lldpXPnoCompliance         MODULE-COMPLIANCE
+    STATUS                 current
+    DESCRIPTION            "
+                           The compliance statement for SNMP entities which
+                           implement the IEC61158-TYPE10 organizationally defined
+                           LLDP extension MIB.
+                           "
+    MODULE                 -- compliant to this module
+    MANDATORY-GROUPS       { lldpXPnoConfigGroup, lldpXPnoLocGroup, lldpXPnoRemGroup }
+    GROUP                  lldpXPnoMrpGroup
+    DESCRIPTION            "Required if the system provides MRP."
+    GROUP                  lldpXPnoPtcpGroup
+    DESCRIPTION            "Required if the system provides PTCP."
+    GROUP                  lldpXPnoMrpIcGroup
+    DESCRIPTION            "Required if the system provides MRP interconnection."
+    GROUP                  lldpXPnoTsnGroup
+    DESCRIPTION            "Required if the system provides TSN."
+    ::= { lldpXPnoCompliances 1 }
+
+-- MIB groupings
+
+lldpXPnoConfigGroup        OBJECT-GROUP
+    OBJECTS                { lldpXPnoConfigSPDTxEnable,
+                             lldpXPnoConfigPortStatusTxEnable,
+                             lldpXPnoConfigAliasTxEnable,
+                             lldpXPnoConfigMAUTypeExtensionTxEnable  
+                           }
+    STATUS                 current
+    DESCRIPTION            "
+                           The collection of objects which are used to configure the
+                           IEC61158-TYPE10 organizationally defined LLDP extension
+                           implementation behavior.
+
+                           This group is mandatory for agents which implement the
+                           IEC61158-TYPE10 organizationally defined LLDP extension.
+                           "
+    ::= { lldpXPnoGroups 1 }
+
+lldpXPnoLocGroup                    OBJECT-GROUP
+    OBJECTS                { lldpXPnoLocLPDValue,
+                             lldpXPnoLocPortTxDValue,
+                             lldpXPnoLocPortRxDValue,
+                             lldpXPnoLocPortStatusRT2,
+                             lldpXPnoLocPortStatusRT3,
+                             lldpXPnoLocPortNoS,
+                             lldpXPnoLocPortModeRT3,
+                             lldpXPnoLocPortPeriodLength,
+                             lldpXPnoLocPortPeriodValidity,
+                             lldpXPnoLocPortRedOffset,
+                             lldpXPnoLocPortRedValidity,
+                             lldpXPnoLocPortOrangeOffset,
+                             lldpXPnoLocPortOrangeValidity,
+                             lldpXPnoLocPortGreenOffset,
+                             lldpXPnoLocPortGreenValidity,
+                             lldpXPnoLocPortStatusRT3OptimizationSupported,
+                             lldpXPnoLocPortStatusRT3PreambleShorteningSupported,
+                             lldpXPnoLocPortStatusRT3PreambleShortening,
+                             lldpXPnoLocPortStatusRT3FragmentationSupported,
+                             lldpXPnoLocPortStatusRT3Fragmentation,
+                             lldpXPnoLocPortOperMauTypeExtension
+                           }
+    STATUS                 current
+    DESCRIPTION            "
+                           The collection of objects which are used to configure the
+                           IEC61158-TYPE10 organizationally defined LLDP extension
+                           implementation behavior.
+
+                           This group is mandatory for agents which implement the
+                           IEC61158-TYPE10 organizationally defined LLDP extension,
+                           because the information about the signal propagation delay
+                           is necessary to configure PROFINET domains.
+                           "
+    ::= { lldpXPnoGroups 2 }
+
+lldpXPnoRemGroup           OBJECT-GROUP
+    OBJECTS                { lldpXPnoRemLPDValue,
+                             lldpXPnoRemPortTxDValue,
+                             lldpXPnoRemPortRxDValue,
+                             lldpXPnoRemPortStatusRT2,
+                             lldpXPnoRemPortStatusRT3,
+                             lldpXPnoRemPortNoS,
+                             lldpXPnoRemPortModeRT3,
+                             lldpXPnoRemPortPeriodLength,
+                             lldpXPnoRemPortPeriodValidity,
+                             lldpXPnoRemPortRedOffset,
+                             lldpXPnoRemPortRedValidity,
+                             lldpXPnoRemPortOrangeOffset,
+                             lldpXPnoRemPortOrangeValidity,
+                             lldpXPnoRemPortGreenOffset,
+                             lldpXPnoRemPortGreenValidity,
+                             lldpXPnoRemPortStatusRT3PreambleShortening,
+                             lldpXPnoRemPortStatusRT3Fragmentation,
+                             lldpXPnoRemPortOperMauTypeExtension
+                           }
+    STATUS                 current
+    DESCRIPTION            "
+                           The collection of objects which are used to configure the
+                           IEC61158-TYPE10 organizationally defined LLDP extension
+                           implementation behavior.
+
+                           This group is mandatory for agents which implement the
+                           IEC61158-TYPE10 organizationally defined LLDP extension,
+                           because the information about the signal propagation delay
+                           is necessary to configure PROFINET domains.
+                           "
+    ::= { lldpXPnoGroups 3 }
+
+lldpXPnoMrpGroup           OBJECT-GROUP
+    OBJECTS                { lldpXPnoConfigMrpTxEnable,
+                             lldpXPnoLocPortMrpUuId,
+                             lldpXPnoLocPortMrrtStatus,
+                             lldpXPnoRemPortMrpUuId,
+                             lldpXPnoRemPortMrrtStatus
+                           }
+    STATUS                 current
+    DESCRIPTION            "The collection of objects which are used to configure the
+                           IEC61158-TYPE10 organizationally defined LLDP extension
+                           implementation behavior."
+    ::= { lldpXPnoGroups 4 }
+
+lldpXPnoPtcpGroup          OBJECT-GROUP
+    OBJECTS                { lldpXPnoConfigPtcpTxEnable,
+                             lldpXPnoLocPortPtcpMaster,
+                             lldpXPnoLocPortPtcpSubdomainUUID,
+                             lldpXPnoLocPortPtcpIRDataUUID,
+                             lldpXPnoRemPortPtcpMaster,
+                             lldpXPnoRemPortPtcpSubdomainUUID,
+                             lldpXPnoRemPortPtcpIRDataUUID
+                           }
+    STATUS                 current
+    DESCRIPTION            "The collection of objects which are used to configure the
+                           IEC61158-TYPE10 organizationally defined LLDP extension
+                           implementation behavior."
+    ::= { lldpXPnoGroups 5 }
+
+lldpXPnoMrpIcGroup         OBJECT-GROUP
+    OBJECTS                { lldpXPnoConfigMrpIcTxEnable,
+                             lldpXPnoLocPortMrpIcRole,
+                             lldpXPnoLocPortMrpIcMicPosition,
+                             lldpXPnoLocPortMrpIcDomainId,
+                             lldpXPnoRemPortMrpIcRole,
+                             lldpXPnoRemPortMrpIcMicPosition,
+                             lldpXPnoRemPortMrpIcDomainId
+                           }
+    STATUS                 current
+    DESCRIPTION            "The collection of objects which are used to configure the
+                           IEC61158-TYPE10 organizationally defined LLDP extension
+                           implementation behavior."
+    ::= { lldpXPnoGroups 6 }
+
+lldpXPnoTsnGroup           OBJECT-GROUP
+    OBJECTS                { lldpXPnoConfigTsnTxEnable,
+                             lldpXPnoLocTsnDomainName,
+                             lldpXPnoLocTsnDomainUUID,
+                             lldpXPnoLocTsnNmeName,
+                             lldpXPnoLocTsnNmeUUID,
+                             lldpXPnoLocTsnNmeParameterUUID,
+                             lldpXPnoLocTsnNmeAddrSubtype,
+                             lldpXPnoLocTsnNmeAddr,
+                             lldpXPnoLocTsnNmeAddrLen,
+                             lldpXPnoRemTsnDomainUUID,
+                             lldpXPnoRemTsnNmeUUID,
+                             lldpXPnoRemTsnNmeParameterUUID,
+                             lldpXPnoRemTsnNmeAddrSubtype,
+                             lldpXPnoRemTsnNmeAddr
+                           }
+    STATUS                 current
+    DESCRIPTION            "The collection of objects which are used to configure the
+                           IEC61158-TYPE10 organizationally defined LLDP extension
+                           implementation behavior."
+    ::= { lldpXPnoGroups 7 }
+
+END

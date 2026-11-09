@@ -1,0 +1,25 @@
+{
+  "pcap": {
+    "interface": "$CAPTURE_SOURCE",
+    "bpf_filter": "",
+    "chunk_duration_sec": 30,
+    "ringbuffer": {
+      "directory": "$PCAP_BUFFER_DIR",
+      "max_total_size_mb": 50000,
+      "max_file_count": 2000
+    },
+    "archive": {
+      "directory": "$PCAP_ARCHIVE_DIR"
+    }
+  },
+  "api": {
+    "type": "http",
+    "host": "0.0.0.0",
+    "port": 9090,
+    "subprocess_timeout_s": 30
+  },
+  "log": {
+    "level": "INFO",
+    "file": "$PCAP_LOG_FILE"
+  }
+}

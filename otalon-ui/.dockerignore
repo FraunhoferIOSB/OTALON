@@ -1,0 +1,37 @@
+# Build context for otalon-ui/Dockerfile. Keep local state out of the image.
+.git
+.gitignore
+node_modules
+home
+.npm
+.nuxt
+.output
+.nitro
+.cache
+dist
+coverage
+playwright-report
+test-results
+blob-report
+.vitest-cache
+*.log
+*.tmp
+
+# Local environment files and secrets
+.env
+.env.*
+**/.env
+**/.env.*
+*.env
+.envrc
+
+# The repository does not track a lockfile; do not bake a local one into the
+# image so the build follows the clean-clone `npm install` path.
+package-lock.json
+npm-shrinkwrap.json
+
+# Local tooling
+.DS_Store
+Thumbs.db
+.idea
+.vscode

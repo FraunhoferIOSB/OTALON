@@ -1,0 +1,201 @@
+// Global Styles — OTALON UI
+// ICS/OT Dashboard Design with Teal/Cyan primary palette
+
+@use 'tokens' as *;
+
+// =============================================================================
+// Base Reset / Defaults
+// =============================================================================
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: $font-family-base;
+  font-size: $font-size-base;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+// =============================================================================
+// Quasar Theme Overrides (via CSS Custom Properties)
+// =============================================================================
+:root {
+  --q-primary: #{$light-primary};
+  --q-secondary: #{$fhg-green};
+  --q-accent: #{$fhg-green-light};
+  --q-positive: #{$color-success};
+  --q-negative: #{$color-danger};
+  --q-info: #{$color-info};
+  --q-warning: #{$color-warning};
+
+  --cd-surface: #{$light-surface};
+  --cd-surface-text: #{$light-surface-text};
+  --cd-background: #{$light-background};
+  --cd-border: #{$light-border};
+  --cd-muted: #{$light-muted};
+
+  // Brand mark colours. Consumed by OtalonWordmark.vue / OtalonSymbol.vue so a
+  // single inline SVG source serves both themes; the canonical files under
+  // public/images/ keep their hard-coded equivalents for external use.
+  --otalon-ink: #{$otalon-ink-light};
+  --otalon-accent: #{$otalon-accent};
+  --otalon-alert: #{$otalon-alert};
+}
+
+.body--dark {
+  --q-primary: #{$dark-primary};
+  --q-secondary: #{$fhg-green};
+  --q-positive: #{$color-success};
+  --q-negative: #{$color-danger};
+  --q-info: #00acc1;
+  --q-warning: #{$color-warning};
+
+  --cd-surface: #{$dark-surface};
+  --cd-surface-text: #{$dark-surface-text};
+  --cd-background: #{$dark-background};
+  --cd-border: #{$dark-border};
+  --cd-muted: #{$dark-muted};
+
+  // Only the ink flips; the teal traffic lines and the red anomaly dot are
+  // brand constants across both themes (mirrors otalon-wordmark-dark.svg).
+  --otalon-ink: #{$otalon-ink-dark};
+}
+
+// =============================================================================
+// Card and Surface Styles
+// =============================================================================
+.q-card {
+  border-radius: $border-radius-md !important;
+  box-shadow: $shadow-sm;
+  transition: box-shadow 0.2s ease;
+}
+
+.body--dark .q-card {
+  box-shadow: $shadow-dark-sm;
+  border: 1px solid $dark-border;
+}
+
+// =============================================================================
+// Table Styles (higher information density)
+// =============================================================================
+.q-table {
+  th,
+  td {
+    font-size: $font-size-sm;
+    padding: 6px 12px;
+  }
+
+  th {
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    font-size: 11px;
+  }
+}
+
+// =============================================================================
+// Utility Classes
+// =============================================================================
+.text-muted {
+  color: var(--cd-muted);
+}
+
+.surface-bg {
+  background-color: var(--cd-surface);
+}
+
+// All data pages use this inset so toolbar origins stay identical.
+.time-toolbar-page {
+  padding: $spacing-md;
+}
+
+// =============================================================================
+// Management Table Styles
+// =============================================================================
+.management-table {
+  :deep(thead th) {
+    font-weight: 600;
+    background-color: var(--cd-surface);
+  }
+
+  :deep(tbody tr:nth-child(even)) {
+    background-color: var(--cd-surface);
+  }
+}
+
+// =============================================================================
+// Status Indicator Utilities
+// =============================================================================
+.status-dot {
+  --dot-size: 10px;
+  display: inline-block;
+  width: var(--dot-size);
+  height: var(--dot-size);
+  border-radius: 50%;
+
+  &--sm {
+    --dot-size: 8px;
+  }
+
+  &--green {
+    background-color: $status-running;
+  }
+
+  &--amber {
+    background-color: $color-warning;
+  }
+
+  &--yellow {
+    background-color: $color-warning;
+  }
+
+  &--red {
+    background-color: $status-error;
+  }
+
+  &--pulse {
+    animation: pulse-dot 1.5s ease-in-out infinite;
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.5;
+    transform: scale(1.2);
+  }
+}
+
+// =============================================================================
+// Scrollbar Styling (Dark Mode)
+// =============================================================================
+.body--dark {
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: $dark-background;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: $dark-border;
+    border-radius: $border-radius-md;
+
+    &:hover {
+      background: $dark-muted;
+    }
+  }
+}

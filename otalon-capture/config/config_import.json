@@ -1,0 +1,21 @@
+{
+  "api": {
+    "host": "0.0.0.0",
+    "port": 9092
+  },
+  "reporter": {
+    "base_url": "$PCAP_IMPORT_API_BASE_URL",
+    "job_path_template": "/internal/jobs/{display_id}",
+    "token": "$PCAP_IMPORT_WORKER_TOKEN",
+    "timeout_s": 5.0,
+    "max_attempts": 3,
+    "retry_backoff_s": 1.0
+  },
+  "log": {
+    "level": "INFO",
+    "file": "$PCAP_IMPORT_LOG_FILE"
+  },
+  "adapter_config_file": "config/config.json",
+  "progress_interval_records": 5000,
+  "import_dir": "$PCAP_IMPORT_DIR"
+}

@@ -1,0 +1,292 @@
+{
+  "influx": {
+    "url": "$INFLUX_URL",
+    "token": "$INFLUX_TOKEN"
+  },
+  "postgres": {
+    "dsn": "$POSTGRES_DSN"
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "$OTALON_CLAS_LOG_FILE"
+  },
+  "models": {
+    "dir": "$MODEL_DIR"
+  },
+  "pcap_flagging": {
+    "enabled": "$PCAP_FLAGGING_ENABLED",
+    "pcap_recorder_url": "$PCAP_RECORDER_URL",
+    "timeout_seconds": 10
+  },
+  "frequency_monitor": {
+    "persistence_enabled": "$FREQUENCY_PERSISTENCE_ENABLED",
+    "notify_channel": "frequency_profile_changed",
+    "refresh_interval_seconds": 60,
+    "absence_timeout_margin_seconds": 10,
+    "last_seen_flush_interval_seconds": 60
+  },
+  "modules": [
+    {
+      "name": "conn",
+      "enabled": true,
+      "database": "netcap",
+      "measurement": "network_metrics",
+      "tag_key": "uci",
+      "features": [
+        "packet_count",
+        "total_volume",
+        "mean_packet_size",
+        "min_packet_size",
+        "max_packet_size",
+        "std_packet_size",
+        "mean_interarrival_time",
+        "min_interarrival_time",
+        "max_interarrival_time",
+        "std_interarrival_time"
+      ],
+      "blacklist": "$SERIES_BLACKLIST",
+      "preprocessor": {
+        "type": "conn_uci",
+        "params": {
+          "port_collapsing_enabled": true,
+          "port_collapsing_strategy": "heuristic_frequency",
+          "dynamic_bucket_enabled": true
+        }
+      },
+      "bounds_enabled": true,
+      "frequency_monitor": {
+        "enabled": true,
+        "params": {
+          "frequency_tolerance_factor": 2.0,
+          "absence_timeout_factor": 3.0,
+          "absence_timeout_std_factor": 3.0,
+          "min_intervals": 5,
+          "relative_floor_factor": 0.5,
+          "absence_recovery_cycles": 5
+        }
+      },
+      "classification": {
+        "enabled": "$PREDICTION_CLASSIFICATION_ENABLED",
+        "algorithm": "random_forest",
+        "params": {
+          "n_estimators": 50,
+          "max_depth": 8
+        },
+        "confidence_threshold": 0.5,
+        "mitre_technique_file": "$TRAINING_CLASSIFICATION_MITRE_TECHNIQUE_FILE",
+        "balance_per_class": 100,
+        "random_seed": 2025,
+        "label_field": "technical_method"
+      }
+    },
+    {
+      "name": "mac_traffic",
+      "enabled": true,
+      "database": "netcap",
+      "measurement": "mac_traffic",
+      "tag_key": "mac_address",
+      "features": [
+        "out_conn_count",
+        "out_total_packets",
+        "out_total_volume",
+        "out_unique_dst_count",
+        "out_unique_proto_count",
+        "in_conn_count",
+        "in_total_packets",
+        "in_total_volume",
+        "in_unique_src_count",
+        "ratio_in_out_packets",
+        "ratio_in_out_volume",
+        "total_unique_peers",
+        "total_conn_count"
+      ],
+      "blacklist": "$SERIES_BLACKLIST",
+      "preprocessor": {
+        "type": "passthrough",
+        "params": {}
+      },
+      "bounds_enabled": true,
+      "frequency_monitor": {
+        "enabled": true,
+        "params": {
+          "frequency_tolerance_factor": 2.0,
+          "absence_timeout_factor": 3.0,
+          "absence_timeout_std_factor": 3.0
+        }
+      },
+      "classification": {
+        "enabled": "$PREDICTION_CLASSIFICATION_ENABLED",
+        "algorithm": "random_forest",
+        "params": {
+          "n_estimators": 50,
+          "max_depth": 8
+        },
+        "confidence_threshold": 0.5,
+        "mitre_technique_file": "$TRAINING_CLASSIFICATION_MITRE_TECHNIQUE_FILE",
+        "balance_per_class": 100,
+        "random_seed": 2025,
+        "label_field": "technical_method"
+      }
+    },
+    {
+      "name": "proto_traffic",
+      "enabled": true,
+      "database": "netcap",
+      "measurement": "proto_traffic",
+      "tag_key": "protocol",
+      "features": [
+        "proto_conn_count",
+        "proto_total_packets",
+        "proto_total_volume",
+        "proto_unique_src_mac",
+        "proto_unique_dst_mac",
+        "proto_unique_mac_pairs",
+        "proto_mean_packets_per_conn",
+        "proto_mean_volume_per_conn",
+        "proto_mean_packet_size",
+        "proto_std_packet_size"
+      ],
+      "blacklist": "$SERIES_BLACKLIST",
+      "preprocessor": {
+        "type": "passthrough",
+        "params": {
+          "encode_tags": {
+            "protocol": "hash"
+          }
+        }
+      },
+      "bounds_enabled": true,
+      "frequency_monitor": {
+        "enabled": true,
+        "params": {
+          "frequency_tolerance_factor": 2.0,
+          "absence_timeout_factor": 3.0,
+          "absence_timeout_std_factor": 3.0
+        }
+      },
+      "classification": {
+        "enabled": "$PREDICTION_CLASSIFICATION_ENABLED",
+        "algorithm": "random_forest",
+        "params": {
+          "n_estimators": 50,
+          "max_depth": 8
+        },
+        "confidence_threshold": 0.5,
+        "mitre_technique_file": "$TRAINING_CLASSIFICATION_MITRE_TECHNIQUE_FILE",
+        "balance_per_class": 100,
+        "random_seed": 2025,
+        "label_field": "technical_method"
+      }
+    }
+  ],
+  "training": {
+    "boundary": {
+      "quantile": 0.0001,
+      "bounds_variation": 0.2,
+      "upper_bound_min": 2,
+      "min_series_coverage_hours": 5.0,
+      "time_column": "time",
+      "per_feature_overrides": {
+        "mean_interarrival_time": {
+          "bounds_variation": 1.0,
+          "upper_bound_min": 5.0
+        },
+        "max_interarrival_time": {
+          "bounds_variation": 2.0,
+          "upper_bound_min": 5.0
+        },
+        "min_interarrival_time": {
+          "bounds_variation": 2.0,
+          "upper_bound_min": 5.0
+        }
+      }
+    }
+  },
+  "prediction": {
+    "live": {
+      "poll_interval_seconds": 5,
+      "delay_seconds": 15,
+      "grouping_interval_seconds": 10
+    },
+    "offline": {
+      "enabled": false,
+      "start": "",
+      "stop": "",
+      "poll_interval_seconds": 5,
+      "gap_tolerance_seconds": 30
+    },
+    "anomaly_grouping": {
+      "protocol_penalties": {
+        "Ethernet:ARP": 0.6,
+        "Ethernet:IPv4:TCP": 0.8,
+        "Ethernet:IPv4:UDP": 0.8
+      },
+      "min_same_feature_violations_per_series": 2,
+      "min_violated_features_per_interval": 1,
+      "scoring": {
+        "weights": {
+          "rate": 0.6,
+          "coverage": 0.2,
+          "persist": 0.2,
+          "severity": 0.0
+        },
+        "ml_primary_min_mean_confidence": 0.8,
+        "ml_primary_min_event_sum": 2.0,
+        "ml_over_bound_score_ratio": 0.5,
+        "ml_multi_type_confidence_gap_ratio": 0.25
+      }
+    }
+  },
+  "pipeline_post_processing": {
+    "stages": [
+      {
+        "type": "ensemble_ml",
+        "enabled": false,
+        "algorithm": "gradient_boosting",
+        "params": {
+          "n_estimators": 100
+        }
+      },
+      {
+        "type": "rule_based",
+        "enabled": true,
+        "config": {
+          "gap_tolerance_seconds": 10,
+          "max_alarm_duration_seconds": 3600,
+          "cross_module_correlation": true,
+          "module_weights": {
+            "conn": 1.0,
+            "mac_traffic": 0.8,
+            "proto_traffic": 0.6
+          }
+        }
+      }
+    ]
+  },
+  "group_classifier": {
+    "enabled": false,
+    "model_path": "/app/models/group_classifier.joblib",
+    "confidence_threshold": 0.3,
+    "training": {
+      "enabled": false,
+      "window_start": "2026-04-18 22:00:00",
+      "window_stop": "2026-04-19 17:00:00",
+      "ground_truth_file": "/app/models/mitre_techniques_log.json",
+      "feature_set": "C",
+      "label_time_margin_seconds": 30,
+      "random_forest": {
+        "n_estimators": 300,
+        "max_depth": null,
+        "min_samples_leaf": 1,
+        "class_weight": "balanced",
+        "random_state": 42,
+        "n_jobs": -1
+      },
+      "cross_validation": {
+        "n_splits": 10,
+        "shuffle": true,
+        "random_state": 42
+      }
+    }
+  }
+}

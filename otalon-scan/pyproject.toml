@@ -1,0 +1,90 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "otalon-scan"
+version = "0.3.0"
+description = "Active network device scanner for ICS/OT environments."
+requires-python = ">=3.13"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 120
+target-version = ["py313"]
+
+[tool.isort]
+profile = "black"
+line_length = 120
+known_first_party = ["otalon_scan"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+# Inherit the root selection (E, F, I) and additionally enable the two
+# bandit-derived subprocess rules that codify Phase 3 of
+# ``harden-otalon-scan-security``:
+#
+# - S602 — subprocess-popen-with-shell-true
+# - S603 — subprocess-without-shell-equals-false
+#
+# A future ``subprocess.run(..., shell=True)`` or argv-less invocation
+# anywhere under ``otalon-scan/src/`` will fail CI.
+select = ["E", "F", "I", "S602", "S603"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["otalon_scan"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests legitimately exercise edge cases of subprocess invocation
+# (mocking subprocess.run, asserting argv shape). Allow S602/S603 there.
+"tests/**" = ["S602", "S603"]
+# The SNMP walker uses ``from pysnmp.hlapi.v3arch.asyncio import *`` — the
+# pysnmp public API is genuinely re-exported via star and enumerating
+# every symbol inline (CommunityData, ContextData, ObjectType, ObjectIdentity,
+# SnmpEngine, UdpTransportTarget, walk_cmd, …) bloats the import block
+# without buying any safety. This pattern is intentional and predates
+# ``harden-otalon-scan-security``; the change does not touch the import.
+"src/otalon_scan/modules/snmp_scan/walker.py" = ["F403", "F405"]
+
+[tool.pytest.ini_options]
+addopts = "-q --timeout=20"
+# SUITE-032 folded the standalone ``pytest.ini`` in here. Until then BOTH
+# files existed and ``pytest.ini`` won by precedence, so this block was dead
+# config that merely looked authoritative — and it had already drifted: it
+# registered only ``timeout`` while the live ``pytest.ini`` also registered
+# ``integration``. The values below are the ones that were actually in
+# effect, transcribed verbatim.
+#
+# ``src`` on the path so ``otalon_scan`` resolves without an editable
+# install: the package now sits one level below ``src/``.
+pythonpath = ["src"]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "timeout: per-test timeout provided by pytest-timeout",
+    # Default ``pytest`` runs everything (the workspace ``.venv313`` host
+    # always has Postgres up); CI may select ``-m "not integration"`` to
+    # run only the fast unit layer or ``-m integration`` for the DB tier.
+    "integration: test requires a reachable PostgreSQL instance (POSTGRES_DSN).",
+]
+
+[tool.mypy]
+python_version = "3.13"
+ignore_missing_imports = true
+warn_unused_ignores = true
+no_implicit_optional = true
+
+# HC11 (2026-05-18): the SNMP walker uses ``from pysnmp.hlapi.v3arch.asyncio
+# import *`` because pysnmp re-exports its public API via star (see the
+# matching ``[tool.ruff.lint.per-file-ignores]`` entry for F403/F405). mypy
+# cannot resolve star-imported names, so the ``ObjectIdentity / walk_cmd /
+# SnmpEngine / ...`` references would otherwise produce 9
+# ``[name-defined]`` errors. Silencing them at the file level keeps the
+# rest of the strictness honest without rewriting the SNMP import block.
+[[tool.mypy.overrides]]
+module = "otalon_scan.modules.snmp_scan.walker"
+disable_error_code = ["name-defined"]

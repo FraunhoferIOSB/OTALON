@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "otalon-common"
+version = "0.1.0"
+description = "Shared utilities for the OTALON network monitoring suite"
+requires-python = ">=3.13"
+dependencies = [
+    "pydantic>=2.0",
+    "polars>=1.0",
+    "pandas>=2.0",
+    "loguru>=0.7",
+    "influxdb3-python>=0.7",
+    "python-dotenv>=1.0",
+    "argon2-cffi>=23.1",
+]
+
+[project.optional-dependencies]
+fastapi = [
+    "fastapi>=0.115",
+    "starlette>=0.40",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "black>=24.0",
+    "ruff>=0.4",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.isort]
+profile = "black"
+
+[tool.pytest.ini_options]
+# SUITE-032 folded the standalone ``pytest.ini`` in here; every key is
+# transcribed verbatim. ``src`` stays on the path so ``otalon_common``
+# resolves without an editable install.
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+pythonpath = ["src"]
+addopts = "-q -ra"
+markers = [
+    "golden: Golden tests on exported production data (offline, deterministic)",
+    "smoke: Smoke tests for public API surface (fast, no external dependencies)",
+    "unit: Unit tests for isolated functions and classes",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::FutureWarning",
+]

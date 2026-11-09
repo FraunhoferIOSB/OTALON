@@ -1,0 +1,6 @@
+{
+    "network_interface": "enp4s0",
+    "broadcast": "01:0e:cf:00:00:00",
+    "sniff_time": 2,
+    "filter_net": false
+}

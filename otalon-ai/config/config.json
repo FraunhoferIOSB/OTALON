@@ -1,0 +1,142 @@
+{
+  "server": {
+    "name": "otalon-ai",
+    "host": "0.0.0.0",
+    "port": "$AI_PORT"
+  },
+  "litellm": {
+    "base_url": "$LITELLM_BASE_URL",
+    "api_key": "$LITELLM_API_KEY"
+  },
+  "mcp": {
+    "servers": [
+      {
+        "name": "otalon-mcp",
+        "url": "$CHAT_MCP_URL",
+        "api_key": "$OTALON_MCP_API_KEY"
+      }
+    ],
+    "request_timeout_seconds": 60,
+    "require_api_key": true
+  },
+  "db": {
+    "dsn": "$CHAT_DB_DSN"
+  },
+  "chat": {
+    "llm_model": "$CHAT_LLM_MODEL",
+    "llm_reasoning_effort": "$CHAT_LLM_REASONING_EFFORT",
+    "history_window": "$CHAT_HISTORY_WINDOW",
+    "retention_days": "$CHAT_RETENTION_DAYS",
+    "max_tool_rounds": "$CHAT_MAX_TOOL_ROUNDS",
+    "fallback_message": "I cannot reach my language model right now. Please try again in a moment.",
+    "model_context_window": "$CHAT_MODEL_CONTEXT_WINDOW",
+    "allowed_tools": [
+      "core.ping",
+      "core.capabilities",
+      "core.web_search_duckduckgo",
+      "influx.list_recent_time_series_ids",
+      "influx.list_time_series",
+      "influx.read_single_time_series",
+      "influx.read_multiple_time_series",
+      "influx.list_baseline_time_series",
+      "influx.get_baseline_single_time_series",
+      "influx.get_baseline_multiple_time_series",
+      "postgres.read_bounds",
+      "postgres.read_anomalies",
+      "postgres.read_alarms",
+      "postgres.read_alarm_details",
+      "postgres.read_recent_alarms",
+      "postgres.get_top_alarm_counts",
+      "postgres.get_most_common_alarm",
+      "postgres.list_anomaly_suppressions",
+      "postgres.list_devices",
+      "postgres.get_device",
+      "postgres.list_interfaces",
+      "postgres.get_interface",
+      "pcap.health",
+      "pcap.list_chunks",
+      "pcap.list_anomaly_chunks",
+      "pcap.get_chunks_by_alarm_id",
+      "pcap.get_chunk_meta",
+      "pcap.read_chunk_text",
+      "pcap.analyze_chunk",
+      "pcap.inspect_timewindow",
+      "pcap.protocol_stats",
+      "pcap.conversations",
+      "pcap.io_stats",
+      "pcap.list_baseline_chunks",
+      "pcap.get_baseline_chunks",
+      "mitre.list_tactics",
+      "mitre.list_techniques",
+      "mitre.get_technique_by_id",
+      "mitre.get_techniques_by_tactic",
+      "mitre.search_techniques",
+      "mitre.get_subtechniques",
+      "mitre.stats",
+      "mitre.ping",
+      "agent.get_classification_status",
+      "agent.list_classifications_for_alert",
+      "correct_rhythm_profile",
+      "training.retrain_boundaries",
+      "training.retrain_classifier",
+      "training.get_retrain_status"
+    ]
+  },
+  "llm": {
+    "default_provider": "$AGENT_LLM_PROVIDER",
+    "azure": {
+      "endpoint": "$AZURE_OPENAI_ENDPOINT",
+      "api_key": "$AZURE_OPENAI_API_KEY",
+      "api_version": "$AZURE_OPENAI_API_VERSION",
+      "deployment": "$AZURE_OPENAI_DEPLOYMENT",
+      "default_reasoning_effort": "$AZURE_OPENAI_REASONING_EFFORT"
+    },
+    "openai_compat": {
+      "endpoint": "$OPENAI_COMPAT_ENDPOINT",
+      "api_key": "$OPENAI_COMPAT_API_KEY",
+      "default_model": "$OPENAI_COMPAT_DEFAULT_MODEL"
+    },
+    "default_temperature": 0.1
+  },
+  "jobs": {
+    "llm_model": "$JOBS_LLM_MODEL",
+    "llm_reasoning_effort": "$JOBS_LLM_REASONING_EFFORT",
+    "default_prompt": "$JOBS_DEFAULT_PROMPT",
+    "timeout_seconds": "$JOBS_TIMEOUT_SECONDS",
+    "n_workers": "$JOBS_N_WORKERS",
+    "log_level": "$JOBS_LOG_LEVEL",
+    "allowed_tools": [
+      "postgres.read_alarm_details",
+      "postgres.read_anomalies",
+      "postgres.read_bounds",
+      "influx.list_time_series",
+      "influx.read_single_time_series",
+      "influx.read_multiple_time_series",
+      "influx.list_baseline_time_series",
+      "influx.get_baseline_single_time_series",
+      "influx.get_baseline_multiple_time_series",
+      "pcap.list_chunks",
+      "pcap.list_anomaly_chunks",
+      "pcap.get_chunks_by_alarm_id",
+      "pcap.get_chunk_meta",
+      "pcap.read_chunk_text",
+      "pcap.analyze_chunk",
+      "pcap.inspect_timewindow",
+      "pcap.protocol_stats",
+      "pcap.conversations",
+      "pcap.io_stats",
+      "pcap.list_baseline_chunks",
+      "pcap.get_baseline_chunks",
+      "mitre.list_tactics",
+      "mitre.list_techniques",
+      "mitre.get_technique_by_id",
+      "mitre.get_techniques_by_tactic",
+      "mitre.search_techniques",
+      "mitre.get_subtechniques"
+    ]
+  },
+  "logging": {
+    "level": "$JOBS_LOG_LEVEL",
+    "file": "/app/logs/otalon-ai.log"
+  }
+}

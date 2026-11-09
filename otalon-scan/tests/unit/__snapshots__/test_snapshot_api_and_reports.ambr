@@ -1,0 +1,197 @@
+# serializer version: 1
+# name: test_snapshot_arp_scan_result
+  dict({
+    'abort_reason': None,
+    'findings': list([
+      dict({
+        'article_number': None,
+        'description': None,
+        'device_family': None,
+        'device_role': None,
+        'device_type': None,
+        'extra': dict({
+        }),
+        'firmware_version': None,
+        'hostname': None,
+        'hw_version': None,
+        'ipv4': '10.0.0.10',
+        'ipv6': None,
+        'mac': 'aa:bb:cc:dd:ee:01',
+        'notes': None,
+        'open_ports_summary': None,
+        'product_name': None,
+        'serial_number': None,
+        'subnet': None,
+        'sw_version': None,
+        'vendor': None,
+      }),
+      dict({
+        'article_number': None,
+        'description': None,
+        'device_family': None,
+        'device_role': None,
+        'device_type': None,
+        'extra': dict({
+        }),
+        'firmware_version': None,
+        'hostname': None,
+        'hw_version': None,
+        'ipv4': '10.0.0.11',
+        'ipv6': None,
+        'mac': 'aa:bb:cc:dd:ee:02',
+        'notes': None,
+        'open_ports_summary': None,
+        'product_name': None,
+        'serial_number': None,
+        'subnet': None,
+        'sw_version': None,
+        'vendor': None,
+      }),
+    ]),
+    'module_name': 'T1018/arp_scan',
+    'protocol': 'arp',
+    'raw_results': list([
+      dict({
+        'ip': '10.0.0.10',
+        'mac': 'aa:bb:cc:dd:ee:01',
+      }),
+      dict({
+        'ip': '10.0.0.11',
+        'mac': 'aa:bb:cc:dd:ee:02',
+      }),
+    ]),
+    'source_ip': None,
+    'source_mac': None,
+  })
+# ---
+# name: test_snapshot_finished_scans_response_one_entry
+  dict({
+    'finished': dict({
+      'deadbeef-0000-0000-0000-000000000001': 'arp_scan',
+    }),
+  })
+# ---
+# name: test_snapshot_modules_response
+  dict({
+    'modules': list([
+      'arp_scan',
+      'opcua_discover',
+      'pn_discovery',
+      'port_scan',
+      'snmp_scan',
+    ]),
+  })
+# ---
+# name: test_snapshot_pn_discovery_result
+  dict({
+    'abort_reason': None,
+    'findings': list([
+      dict({
+        'article_number': None,
+        'description': 'Station: PLC-01',
+        'device_family': None,
+        'device_role': 'Primary',
+        'device_type': 'S7-1500',
+        'extra': dict({
+        }),
+        'firmware_version': None,
+        'hostname': None,
+        'hw_version': None,
+        'ipv4': '10.0.0.30',
+        'ipv6': None,
+        'mac': '00:1b:1b:00:00:01',
+        'notes': None,
+        'open_ports_summary': None,
+        'product_name': None,
+        'serial_number': None,
+        'subnet': None,
+        'sw_version': None,
+        'vendor': 'Siemens',
+      }),
+    ]),
+    'module_name': 'T0846/pn_discovery',
+    'protocol': 'profinet',
+    'raw_results': list([
+      dict({
+        'device_role': 'Primary',
+        'ip_address': '10.0.0.30',
+        'mac_address': '00:1b:1b:00:00:01',
+        'name_of_station': 'PLC-01',
+        'vendor_value': 'Siemens',
+      }),
+    ]),
+    'source_ip': None,
+    'source_mac': None,
+  })
+# ---
+# name: test_snapshot_port_scan_result
+  dict({
+    'abort_reason': None,
+    'findings': list([
+      dict({
+        'article_number': None,
+        'description': None,
+        'device_family': None,
+        'device_role': None,
+        'device_type': None,
+        'extra': dict({
+        }),
+        'firmware_version': None,
+        'hostname': None,
+        'hw_version': None,
+        'ipv4': '10.0.0.20',
+        'ipv6': None,
+        'mac': None,
+        'notes': None,
+        'open_ports_summary': dict({
+          'tcp': list([
+            22,
+            502,
+          ]),
+        }),
+        'product_name': None,
+        'serial_number': None,
+        'subnet': None,
+        'sw_version': None,
+        'vendor': None,
+      }),
+    ]),
+    'module_name': 'T1046/port_scan',
+    'protocol': 'ethernet:ipv4:tcp',
+    'raw_results': list([
+      dict({
+        'host': '10.0.0.20',
+        'ports': list([
+          dict({
+            'port': 22,
+            'proto': 'tcp',
+            'service': 'ssh',
+            'state': 'open',
+          }),
+          dict({
+            'port': 502,
+            'proto': 'tcp',
+            'service': 'modbus',
+            'state': 'open',
+          }),
+        ]),
+      }),
+    ]),
+    'source_ip': None,
+    'source_mac': None,
+  })
+# ---
+# name: test_snapshot_running_scans_response_empty
+  dict({
+    'running': dict({
+    }),
+  })
+# ---
+# name: test_snapshot_start_scan_response
+  dict({
+    'module_name': 'modules/arp_scan',
+    'run_id': '11111111-1111-1111-1111-111111111111',
+    'scan_id': '22222222-2222-2222-2222-222222222222',
+    'status': 'running',
+  })
+# ---

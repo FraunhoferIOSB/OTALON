@@ -1,0 +1,57 @@
+// Light Theme — OTALON
+// Clean light palette with teal/cyan primary accents
+
+@use '../tokens' as *;
+
+:root {
+  --cd-primary: #{$light-primary};
+  --cd-primary-text: #{$light-primary-text};
+  --cd-primary-rgb: 0, 131, 143;
+  --cd-surface: #{$light-surface};
+  --cd-surface-text: #{$light-surface-text};
+  --cd-background: #{$light-background};
+  --cd-border: #{$light-border};
+  --cd-muted: #{$light-muted};
+  --cd-info: #{$color-info};
+  --cd-table-row-even: #{$light-table-row-even};
+  --cd-table-row-odd: #{$light-table-row-odd};
+
+  --cd-plot-bg: #{$plot-bg-light};
+  --cd-plot-text: #{$plot-text-light};
+  --cd-plot-grid: #{$plot-grid-light};
+  --cd-plot-normal: #{$plot-normal-light};
+  --cd-plot-boundary: #{$plot-boundary-light};
+  --cd-plot-anomaly: #{$plot-anomaly-light};
+  --cd-plot-envelope: #{$plot-envelope-light};
+  --cd-plot-line: #{$plot-line-light};
+  --cd-plot-area: #{$plot-area-light};
+  --cd-plot-bounds-upper: #{$plot-bounds-upper-light};
+  --cd-plot-bounds-lower: #{$plot-bounds-lower-light};
+  --cd-plot-anomaly-fill: #{$plot-anomaly-fill-light};
+
+  --cd-ui-divider: #{$ui-divider-light};
+  --cd-ui-text-muted: #{$ui-text-muted-light};
+  --cd-ui-border-muted: #{$ui-border-muted-light};
+
+  --cd-graph-edge: #{$graph-edge-light};
+  --cd-graph-edge-active: #{$graph-edge-active-light};
+  --cd-graph-node-default: #{$graph-node-default-light};
+  --cd-graph-node-faded: #{$graph-node-faded-light};
+
+  --cd-topo-plc: #{$topo-plc};
+  --cd-topo-ipc: #{$topo-ipc};
+  --cd-topo-io: #{$topo-io};
+  --cd-topo-other: #{$topo-other};
+  --cd-topo-anomaly: #{$topo-anomaly};
+  --cd-topo-anomaly-border: #{$topo-anomaly-border};
+  --cd-topo-selection-border: #{$topo-selection-border};
+
+  --cd-danger-rgb: 211, 47, 47;
+  --cd-warning-rgb: 245, 158, 11;
+  --cd-success-rgb: 22, 163, 74;
+  --cd-info-rgb: 0, 131, 143;
+
+  --cd-shadow-sm: #{$shadow-sm};
+  --cd-shadow-md: #{$shadow-md};
+  --cd-shadow-lg: #{$shadow-lg};
+}

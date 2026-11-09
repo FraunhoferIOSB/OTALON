@@ -1,0 +1,15 @@
+./otalon-common
+# Pinned below mcp 2.0.0, which removed the `fastmcp` module this server
+# imports (see d0fa26a). 1.12.4 is the version the suite is built and
+# tested against; 1.28.1 was declared but never installed here and is
+# unsatisfiable alongside pydantic 2.9.2 (it needs pydantic>=2.11).
+mcp==1.12.4
+pydantic==2.9.2
+loguru==0.7.2
+pandas==2.3.3
+numpy==2.3.5
+sqlalchemy==2.0.36
+requests==2.34.2
+beautifulsoup4==4.14.3
+influxdb3_python==0.17.0
+psycopg2-binary==2.9.10
