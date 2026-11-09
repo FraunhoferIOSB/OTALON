@@ -1,5 +1,11 @@
 # OTALON
 
+> **🚧 Under construction**
+>
+> **Version: pre-release (development snapshot).** OTALON is under active
+> development and is not yet a stable release. Features, APIs, and deployment
+> configuration may change before the first stable release.
+
 OTALON is a modular network monitoring and anomaly-detection suite for
 industrial control system environments. It collects network telemetry, detects
 behavioral changes, and provides operator-facing investigation and management
