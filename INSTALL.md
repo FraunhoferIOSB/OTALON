@@ -8,8 +8,8 @@
 ## 1. Clone
 
 ```sh
-git clone https://github.com/FraunhoferIOSB/OTALON.git /home/user/otalon-github
-cd /home/user/otalon-github
+git clone https://github.com/FraunhoferIOSB/OTALON.git /home/user/otalon
+cd /home/user/otalon
 export WORKSPACE_DIR="$PWD"
 ```
 
@@ -19,7 +19,7 @@ export WORKSPACE_DIR="$PWD"
 getent group 10000 || sudo groupadd -g 10000 otalon-shared
 sudo usermod -aG "$(getent group 10000 | cut -d: -f1)" "$USER"
 newgrp "$(getent group 10000 | cut -d: -f1)"
-cd /home/user/otalon-github
+cd /home/user/otalon
 export WORKSPACE_DIR="$PWD"
 id
 ```
