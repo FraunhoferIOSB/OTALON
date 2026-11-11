@@ -25,6 +25,7 @@ id
 ```
 
 - Confirm GID `10000` appears. Membership grants write access to shared application files.
+- `newgrp` opens a new shell. Run the following `cd`, `export` and `id` lines at its new prompt. Continue the installation in this shell; `exit` returns to the old shell, whose group membership has not changed. Alternatively, log out and log in again after `usermod`, then repeat `cd`, `export` and `id`.
 
 ## 3. Create the local configuration once
 
@@ -44,6 +45,8 @@ stat -c '%u:%g %a %n' .env.compose
 ```sh
 nano .env.compose
 ```
+
+- Use an interactive terminal. In Nano, press `Ctrl+O`, then Enter to save, and `Ctrl+X` to exit. Do not print the configured file or paste its contents into chat.
 
 Edit only the top **EDIT THIS SECTION** block:
 - `WORKSPACE_DIR`: your absolute checkout path; review timezone defaults.
@@ -166,12 +169,13 @@ docker compose --env-file .env.compose --profile all run --rm --no-deps \
 ```sh
 docker compose --env-file .env.compose --profile core-db up -d --wait postgres influxdb3
 docker compose --env-file .env.compose --profile core-db exec influxdb3 influxdb3 show databases
-# Fresh installation only; skip creation if netcap already exists:
+# Fresh installation only: run the next command if and only if netcap is absent:
 docker compose --env-file .env.compose --profile core-db exec influxdb3 influxdb3 create database netcap
 docker compose --env-file .env.compose --profile core-db exec influxdb3 influxdb3 show databases
 ```
 
 - Confirm `netcap`. CLI reads its token from the container environment; no `--token` argument.
+- If and only if `netcap` is absent from the first `show databases` output, run `create database netcap`. If it is already listed, skip creation and continue with the final `show databases` check.
 - PostgreSQL applies `POSTGRES_PASSWORD` **only when initializing an empty data volume**. Changing `.env.compose` does not rotate a persisted password.
 
 ## 11. Apply migrations BEFORE starting consumers
