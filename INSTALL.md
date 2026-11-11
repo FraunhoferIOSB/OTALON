@@ -30,17 +30,25 @@ id
 ## 3. Create the local configuration once
 
 ```sh
-if [ ! -e .env.compose ]; then
-  sudo install -o 10001 -g 10000 -m 0660 .env.compose.sample .env.compose
+if [ ! -e .env.compose ] && [ ! -L .env.compose ]; then
+  python3 scripts/install/setup.py --workspace "$WORKSPACE_DIR"
+  sudo chown 10001:10000 .env.compose
+  sudo chmod 0660 .env.compose
 fi
-sudo chown 10001:10000 .env.compose
-sudo chmod 0660 .env.compose
 stat -c '%u:%g %a %n' .env.compose
 ```
 
-- Expected: `10001:10000 660 .env.compose`. **Never overwrite a configured file from the sample.**
+- Expected: `10001:10000 660 .env.compose`. Never overwrite a configured file from the sample. Existing files are not re-owned or re-moded automatically; stop if the displayed metadata differs and review it explicitly. Symlinks are rejected by the setup helper.
 
-## 4. Configure secrets and dependencies BEFORE building
+## 4. Generate local secrets; configure external dependencies
+
+```sh
+python3 scripts/install/setup.py --workspace "$WORKSPACE_DIR"
+```
+
+- This fills only missing/template local DB, service and callback secrets with cryptographic randomness, and derives the checkout path/build reference. Configured values, comments, order, inode, owner and mode are preserved. It never generates external provider credentials or selects capture/scan interfaces. Output lists variable names only; a successful setup is not deployment readiness.
+- The helpers use a restricted environment-file grammar: single quotes are literal, and bare/double-quoted `${NAME}` references must follow their inputs. Shell commands, unsupported substitutions, duplicate assignments and symlink/hardlinked inputs fail before writes. See [Local Installer Utilities](scripts/install/README.md).
+- LiteLLM is a gateway between OTALON and your model provider. For this bounded installation path, use an existing reachable LiteLLM-compatible gateway; no gateway, upstream subscription, credentials or models are bundled. A gateway alone does not provide an LLM. Obtain its `/v1` URL, access key and actually served chat/job aliases before proceeding. The optional bundled-gateway and full WSL deployment paths remain separate, unverified work.
 
 ```sh
 nano .env.compose
@@ -48,16 +56,13 @@ nano .env.compose
 
 - Use an interactive terminal. In Nano, press `Ctrl+O`, then Enter to save, and `Ctrl+X` to exit. Do not print the configured file or paste its contents into chat.
 
-Edit only the top **EDIT THIS SECTION** block:
-- `WORKSPACE_DIR`: your absolute checkout path; review timezone defaults.
-- `CAPTURE_SOURCE`, `SCAN_SOURCE`: approved, real host interfaces, not the sample's lab names.
-- `POSTGRES_PASSWORD`: unique, high-entropy hexadecimal password; reserved URL characters break the derived DSNs. Keep DB name/user/port defaults for initial setup.
-- `INFLUX_TOKEN`: unique token starting with `apiv3_`, followed by 64 random hexadecimal characters.
-- API/service keys: replace all credential placeholders with distinct random keys. Allow-lists below reuse these fields automatically; do not duplicate key values manually.
-- `PCAP_IMPORT_WORKER_TOKEN`: one callback secret shared automatically by API/import worker. Required for imports to complete.
-- `LITELLM_BASE_URL` (ending `/v1`), `LITELLM_API_KEY`, `CHAT_LLM_MODEL`, `JOBS_LLM_MODEL`: your reachable external proxy and actually served aliases. **No proxy or models are included.**
-- `OTALON_BUILD_REF`: checkout commit (`git rev-parse HEAD`). Optional `NVD_API_KEY`; keep reviewed feature/blacklist defaults unless needed.
-- Use a password manager's secure generator (32 random bytes / 64 hex characters). Never send credentials in chat or commit `.env.compose`.
+Edit only the top EDIT THIS SECTION block:
+- `WORKSPACE_DIR`: confirm the derived absolute checkout path; review timezone defaults.
+- `CAPTURE_SOURCE`, `SCAN_SOURCE`: approved, real host interfaces, not the sample's lab names. The helper does not authorize them.
+- `POSTGRES_PASSWORD`, `INFLUX_TOKEN`, API/service keys and `PCAP_IMPORT_WORKER_TOKEN`: generated locally when missing/template. Keep configured credentials; do not rotate them to fix an existing database. Allow-lists and callback inputs reuse these values automatically.
+- `LITELLM_BASE_URL` (ending `/v1`), `LITELLM_API_KEY`, `CHAT_LLM_MODEL`, `JOBS_LLM_MODEL`: configure the external gateway and served aliases manually. The sample endpoint is not proof of availability.
+- `OTALON_BUILD_REF`: confirm the derived checkout reference. Optional `NVD_API_KEY`; keep reviewed feature/blacklist defaults unless needed.
+- Never send credentials in chat or commit `.env.compose`.
 
 ## 5. Prepare shared directories and access
 
@@ -82,63 +87,21 @@ sudo chmod g+ws "$WORKSPACE_DIR"
 ## 6. Check configuration without printing secrets
 
 ```sh
-python3 - <<'PY'
-from pathlib import Path
-import re
-seen, values = set(), {}
-for line in Path('.env.compose').read_text().splitlines():
-    if not line.strip() or line.lstrip().startswith('#'):
-        continue
-    m = re.fullmatch(r'([A-Z][A-Z0-9_]*)=(.*)', line)
-    if not m or m[1] in seen or '<SET_' in line or '<git-sha-or-release-ref>' in line:
-        raise SystemExit('Invalid, duplicate, or unresolved environment assignment')
-    if not set(re.findall(r'\$\{([A-Z][A-Z0-9_]*)\}', m[2])) <= seen:
-        raise SystemExit('Environment reference must follow its input assignment')
-    seen.add(m[1])
-    values[m[1]] = m[2].strip().strip("'\"")
-required = [line.split('=', 1)[0] for line in Path('.env.compose.sample').read_text().splitlines()
-            if line and not line.startswith('#') and '=<SET_' in line]
-missing = [key for key in required if not values.get(key)]
-if missing:
-    raise SystemExit('Required settings missing: ' + ', '.join(missing))
-print('Environment syntax, reference order and required inputs OK')
-PY
+python3 scripts/install/check.py --workspace "$WORKSPACE_DIR"
 docker compose --env-file .env.compose --profile all config --quiet
 ```
 
-- Stop on errors; do not paste resolved configuration. Build consumes `DOCKER_GID`; database credentials take effect at initialization/start, not image build.
+- Stop on errors; do not paste resolved configuration. Both checker modes validate local shapes only and do not contact the gateway or establish served-model availability. `--syntax-only` permits explicit offline/sample endpoint markers and is not an installation readiness gate. Build consumes `DOCKER_GID`; database credentials take effect at initialization/start, not image build.
 
 ## 7. Create InfluxDB's bootstrap token file
 
 - `INFLUX_TOKEN` alone does **not** provision the server. Compose mounts this local JSON for `--admin-token-file` (image UID/GID `1500:1500`). Existing tokens are not rotated by env changes.
 
 ```sh
-sudo env WORKSPACE_DIR="$WORKSPACE_DIR" python3 - <<'PY'
-import json, os, pathlib, secrets
-root = pathlib.Path(os.environ['WORKSPACE_DIR'])
-values = dict(line.split('=', 1) for line in (root / '.env.compose').read_text().splitlines()
-              if line and not line.startswith('#') and '=' in line)
-token = values['INFLUX_TOKEN'].strip().strip("'\"")
-if not token.startswith('apiv3_') or len(token) != 70 or any(c not in '0123456789abcdef' for c in token[6:]):
-    raise SystemExit('INFLUX_TOKEN must be apiv3_ plus 64 random hexadecimal characters')
-target = root / 'shared/influx-admin-token.json'
-if target.exists() or target.is_symlink():
-    if target.is_symlink() or not target.is_file():
-        raise SystemExit('Bootstrap target is not a regular file')
-    current = json.loads(target.read_text())
-    if current.get('token') != token or current.get('name') != '_admin':
-        raise SystemExit('Existing token differs; explicit credential rotation required')
-else:
-    tmp = target.with_name('.influx-token-' + secrets.token_hex(8))
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, 'w') as f:
-        json.dump({'token': token, 'name': '_admin'}, f)
-    os.chown(tmp, 1500, 1500)
-    os.replace(tmp, target)
-os.chown(target, 1500, 1500)
-os.chmod(target, 0o600)
-PY
+sudo python3 scripts/install/bootstrap_influx.py --workspace "$WORKSPACE_DIR"
 ```
+
+- An existing matching file must already be owned by `1500:1500` with mode `0600`; bytes, inode and metadata are preserved. Mismatched credentials, malformed/duplicate JSON, unsafe links or incompatible metadata fail without automatic repair. Review failures explicitly; never delete persisted database volumes to make a token change work.
 
 ## 8. Determine the Docker socket GID; build
 
