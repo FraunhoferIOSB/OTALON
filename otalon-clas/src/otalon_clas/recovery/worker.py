@@ -44,7 +44,7 @@ class RecoveryWorker:
             ident = hashlib.sha256(
                 (self.repository.source_id + ":" + module + ":" + str(batch["id"]) + ":" + task["hash"]).encode()
             ).hexdigest()
-            pending = next((o for o in self.progress.outcomes() if o["id"] == ident), None)
+            pending = self.progress.outcome(ident)
             if pending is not None:
                 payload = pending["payload"]
             else:

@@ -112,12 +112,20 @@ CREATE TABLE IF NOT EXISTS outcomes(id TEXT PRIMARY KEY,
                 raise ValueError("outcome identity conflict")
             self.db.execute("INSERT OR IGNORE INTO outcomes VALUES(?,?,?,0)", (ident, module, encoded))
 
-    def outcomes(self):
+    def outcome(self, ident):
         with self.lock:
-            return [
-                dict(r, payload=json.loads(r["payload"]))
-                for r in self.db.execute("SELECT * FROM outcomes WHERE persisted=0 ORDER BY rowid LIMIT 10")
-            ]
+            row = self.db.execute("SELECT * FROM outcomes WHERE id=? AND persisted=0", (ident,)).fetchone()
+            return dict(row, payload=json.loads(row["payload"])) if row else None
+
+    def outcomes(self, module=None):
+        with self.lock:
+            query = "SELECT * FROM outcomes WHERE persisted=0"
+            params = []
+            if module is not None:
+                query += " AND module=?"
+                params.append(module)
+            query += " ORDER BY rowid LIMIT 10"
+            return [dict(r, payload=json.loads(r["payload"])) for r in self.db.execute(query, params)]
 
     def ack_outcome(self, ident):
         with self.lock, self.db:

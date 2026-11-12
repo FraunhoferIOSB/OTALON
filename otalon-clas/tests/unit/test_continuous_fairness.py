@@ -14,8 +14,8 @@ def test_recovery_rotates_modules_after_each_completed_work():
             self.order.append(module)
             return {"hash": "h", "batch": {"id": 1, "payload": []}}
 
-        def outcomes(self):
-            return []
+        def outcome(self, ident):
+            return None
 
         def put_outcome(self, *args):
             pass

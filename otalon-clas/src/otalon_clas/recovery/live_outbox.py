@@ -37,9 +37,7 @@ class LiveOutboxPersister(AnomalyPersister):
 
     def retry(self):
         count = 0
-        for outcome in self.progress.outcomes():
-            if outcome["module"] != "__live__":
-                continue
+        for outcome in self.progress.outcomes(module="__live__"):
             try:
                 with self._connector.session() as session:
                     for values in outcome["payload"]["records"]:
