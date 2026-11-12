@@ -106,16 +106,12 @@ def _external_missing(document: EnvDocument) -> list[str]:
             or has_placeholder(value)
             or ".invalid" in value.lower()
             or "offline-unconfigured" in value.lower()
-            or (
-                key == "LITELLM_BASE_URL"
-                and value.lower() == "http://host.docker.internal:4000/v1"
-            )
         ):
             missing.append(key)
     return missing
 
 
-def setup(workspace_arg: str, env_arg: str | None) -> int:
+def setup(workspace_arg: str, env_arg: str | None, without_ai: bool = False) -> int:
     workspace = absolute_workspace(workspace_arg)
     env_path = checked_path(workspace, env_arg or ".env.compose")
     sample_path = checked_path(workspace, ".env.compose.sample")
@@ -208,9 +204,14 @@ def setup(workspace_arg: str, env_arg: str | None) -> int:
         print(f"Updated {len(changed)} keys: {', '.join(changed)}")
     else:
         print("Updated 0 keys")
-    missing = _external_missing(candidate)
-    if missing:
-        print("External configuration missing: " + ", ".join(missing))
+    if without_ai:
+        print(
+            "LLM configuration is optional in this mode; AI features unavailable (--without-ai)."
+        )
+    else:
+        missing = _external_missing(candidate)
+        if missing:
+            print("External configuration missing: " + ", ".join(missing))
     return 0
 
 
@@ -220,9 +221,14 @@ def main() -> int:
         "--workspace", default=str(Path(__file__).absolute().parents[2])
     )
     parser.add_argument("--env-file")
+    parser.add_argument(
+        "--without-ai",
+        action="store_true",
+        help="prepare core installation only; preserve optional external LLM configuration",
+    )
     args = parser.parse_args()
     try:
-        return setup(args.workspace, args.env_file)
+        return setup(args.workspace, args.env_file, args.without_ai)
     except OSError:
         print("Filesystem operation failed", file=sys.stderr)
         return 1

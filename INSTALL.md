@@ -2,7 +2,7 @@
 
 - **Native Linux:** rootful Docker Engine, Compose v2+, `git`, `sudo`, Python 3.10+, `curl`; working Docker access and internet for dependencies.
 - **Tested 2026-11-11:** fresh Ubuntu 24.04 VM; 11 images built, databases initialized, migration `0015` stored, 13 services healthy, HTTPS and import-mount checks passed. Offline gateway markers and VM loopback were test adaptations, **not** proof of AI, physical capture or full acceptance.
-- **WSL2 + Docker Desktop:** the suite setup below is build/DB testing only on Desktop, not a validated full deployment. For physical traffic, use [Windows capture → manual import](#windows-capture--manual-import) below; automatic continuous ingestion is not implemented. Desktop host networking is TCP/UDP (layer 4), not direct physical-NIC access. Stop before step 12 on WSL. See [Docker limitations](https://docs.docker.com/engine/network/drivers/host/).
+- **WSL2 + Docker Desktop:** continuous physical capture from a Windows-local Npcap/dumpcap collector is required, but the collector/receiver/recovery implementation is still pending. Manual PCAP uploads are not a substitute. The setup below remains build/DB testing only on Desktop, not a validated full deployment; stop before step 12 on WSL. Desktop host networking is TCP/UDP (layer 4), not direct physical-NIC access. See [Docker limitations](https://docs.docker.com/engine/network/drivers/host/).
 - **Security:** DB ports `5432`/`8181` publish on all host interfaces. Restrict access before startup. API has root-equivalent Docker-socket access, read-only host-root mounts and a writable checkout; read-only mounts can still disclose host data.
 - Run each block in order; **stop on an error**. Keep the same shell and checkout. Do not print credentials, resolved Compose configuration or connection strings.
 
@@ -44,11 +44,20 @@ id
 - Use your actual checkout path if different. Confirm GID `10000` appears; group members can write shared application files.
 - Continue in this shell. `exit` returns to the old shell without refreshed membership. Alternatively, log out/in after `usermod`, then repeat `cd`, export and `id`.
 
-## 3. Create local configuration once
+## 3. Choose core-only mode; create local configuration once
+
+**Default: no LLM gateway required.** In this refreshed shell, select core services (capture and detection stay included):
+
+```sh
+INSTALL_AI_ARGS=--without-ai
+OTALON_SERVICES='tls-proxy postgres influxdb3 otalon-capture otalon-capture-pcap-import otalon-clas otalon-ui otalon-api otalon-scan otalon-scan-passive-seeder otalon-scan-cve-lookup otalon-mcp'
+```
+
+Keep these variables in the same shell for build/start/recreate. A new terminal needs this selection again. Existing `otalon-ai` containers are not stopped by changing these variables.
 
 ```sh
 if [ ! -e .env.compose ] && [ ! -L .env.compose ]; then
-  python3 scripts/install/setup.py --workspace "$WORKSPACE_DIR" &&
+  python3 scripts/install/setup.py --workspace "$WORKSPACE_DIR" ${INSTALL_AI_ARGS:-} &&
   sudo chown 10001:10000 .env.compose &&
   sudo chmod 0660 .env.compose
 fi
@@ -58,21 +67,29 @@ stat -c '%u:%g %a %n' .env.compose
 - Expected: `10001:10000 660 .env.compose`. Existing files are not overwritten, re-owned or re-moded automatically; review unexpected metadata explicitly.
 - Never copy the sample over configured credentials. The helpers reject symlink/hardlinked inputs.
 
-## Before step 4: connect LiteLLM
+## Optional before step 4: enable LLM features
+
+**No LiteLLM? Skip this section.** OTALON core capture, anomaly/frequency/classifier detection and UI do not require an LLM gateway. Chat and LLM classification/jobs are unavailable in core-only mode; local DB/service authentication still applies.
 
 - **Existing gateway:** reuse its container-reachable `/v1` URL, a scoped access key and the exact served aliases for chat/jobs. Upstream provider credentials are separate; keep your working gateway/configuration.
 - **New gateway:** follow the official [LiteLLM Docker quickstart](https://docs.litellm.ai/docs/proxy/docker_quick_start) or [CLI quickstart](https://docs.litellm.ai/docs/proxy/quick_start) **in a separate directory, not this OTALON checkout**. Enable authentication, connect a real provider/model, create an access key allowed to use both aliases and send a successful test request before continuing. Review ports/firewall; do not expose an unauthenticated gateway. No bundled proxy is supplied by OTALON yet.
 - **Docker Desktop host service:** `http://host.docker.internal:4000/v1` is a valid address when the gateway is reachable through Desktop's host on port4000 ([Docker routing](https://docs.docker.com/desktop/features/networking/networking-how-tos/)). A proxy running in another WSL distro/container is not automatically that host service; verify its publication/listen address/firewall. Native Linux routing may require a different reachable host/DNS address.
 - The checker below validates configuration text, **not connectivity or model access**. A valid URL without a configured gateway/key/models is not AI acceptance.
-
-## 4. Generate secrets; configure gateway and interfaces
+- Only after selecting a real gateway/key/aliases, enable its service for this shell:
 
 ```sh
-python3 scripts/install/setup.py --workspace "$WORKSPACE_DIR"
+INSTALL_AI_ARGS=
+OTALON_SERVICES="$OTALON_SERVICES otalon-ai"
+```
+
+## 4. Generate secrets; configure optional gateway and interfaces
+
+```sh
+python3 scripts/install/setup.py --workspace "$WORKSPACE_DIR" ${INSTALL_AI_ARGS:-}
 ```
 
 - Generates only missing/template local DB, service and callback secrets; derives checkout/build reference. Configured values, comments, order, inode, owner and mode remain intact. A repeat can report `Updated 0 keys`; external fields may still be missing.
-- Use the LiteLLM URL/key/aliases prepared **before this step**; local secret generation does not provision a gateway or provider subscription.
+- If LLM features were selected, use the prepared LiteLLM URL/key/aliases; otherwise leave those external fields untouched. Local secret generation does not provision a gateway or provider subscription.
 
 ```sh
 nano .env.compose
@@ -81,13 +98,13 @@ nano .env.compose
 Edit only the top **EDIT THIS SECTION** block:
 - `WORKSPACE_DIR`, `OTALON_BUILD_REF`: confirm generated values; review timezone defaults.
 - `CAPTURE_SOURCE`, `SCAN_SOURCE`: approved real host interfaces, not sample lab names. Do not select an OT mirror port for active scanning.
-- `LITELLM_BASE_URL`, `LITELLM_API_KEY`, `CHAT_LLM_MODEL`, `JOBS_LLM_MODEL`: your gateway and served aliases; a nonempty value is not reachability proof.
+- `LITELLM_BASE_URL`, `LITELLM_API_KEY`, `CHAT_LLM_MODEL`, `JOBS_LLM_MODEL`: only for selected LLM features. Core-only mode permits missing/empty/sample external values and preserves them; a nonempty value is not reachability proof.
 - Local DB/service/callback secrets: generated by setup. Keep existing credentials; env edits do not rotate persisted DB passwords/tokens. Caller registries reuse these fields.
 - Optional `NVD_API_KEY`; keep reviewed detection/blacklist defaults. Never commit `.env.compose` or send it in chat.
 
 - Nano: `Ctrl+O`, Enter to save; `Ctrl+X` to exit. Use an interactive terminal.
 - Helpers accept a restricted env grammar: single quotes are literal; bare/double-quoted `${NAME}` references follow their inputs. Unsupported substitutions/duplicates fail before writing. See [helper reference](scripts/install/README.md).
-- **No gateway yet?** The normal checker will refuse. `--syntax-only` with explicit offline markers is only a bounded infrastructure-test adaptation, not full installation or AI readiness. Do not substitute fake credentials for acceptance.
+- **No gateway:** keep `INSTALL_AI_ARGS=--without-ai` and exclude `otalon-ai` through the selected service list. `--syntax-only` is a diagnostic mode, not the no-LLM installation choice. Do not create fake external keys/models.
 
 ## 5. Prepare shared directories
 
@@ -111,12 +128,12 @@ sudo chmod g+ws "$WORKSPACE_DIR"
 ## 6. Check configuration
 
 ```sh
-python3 scripts/install/check.py --workspace "$WORKSPACE_DIR" &&
+python3 scripts/install/check.py --workspace "$WORKSPACE_DIR" ${INSTALL_AI_ARGS:-} &&
 docker compose --env-file .env.compose --profile all config --quiet
 ```
 
-- Stop on errors. Both checker modes validate local shapes only, not endpoint/model availability. The Desktop host URL is accepted; real `.invalid`/`offline-unconfigured` markers are still refused by the normal check. Build does not initialize databases.
-- For a gateway published on the Desktop host, the literal env line is `LITELLM_BASE_URL=http://host.docker.internal:4000/v1` — no `@url:`, backticks or Markdown. Configured keys and chat/job aliases are still required. Do not use `--syntax-only` to bypass a real configuration error.
+- Stop on errors. Checks validate local shapes only. Core-only success explicitly says LLM features unavailable. With LLM selected, `endpoint reachability and served-model availability were NOT verified` is correct: run a real gateway/model request separately. Build does not initialize databases.
+- For a gateway published on the Desktop host, the literal env line is `LITELLM_BASE_URL=http://host.docker.internal:4000/v1` — no `@url:`, backticks or Markdown. LLM mode requires configured keys/aliases and refuses real offline markers; no-LLM mode exempts only the four external fields, not env grammar/auth/DB checks.
 
 ## 7. Create InfluxDB's bootstrap token file
 
@@ -140,7 +157,7 @@ case "$DOCKER_GID" in
   ''|*[!0-9]*) printf '%s\n' 'No numeric Docker socket GID; stop here'; exit 1 ;;
 esac
 docker compose --env-file .env.compose --profile all build \
-  --build-arg "DOCKER_GID=$DOCKER_GID"
+  --build-arg "DOCKER_GID=$DOCKER_GID" ${OTALON_SERVICES:?Select core or LLM services in step 3}
 ```
 
 - Use the daemon-mounted socket's GID, not merely a group named `docker`. The probe does not call the socket API; a read-only socket mount is not a general security restriction.
@@ -203,11 +220,11 @@ docker compose --env-file .env.compose --profile core-db exec -T postgres \
 - **WSL/Desktop physical capture: stop before this block.** The Windows collector/receiver and late-data handling remain pending; there is no raw-NIC workaround in this guide.
 
 ```sh
-docker compose --env-file .env.compose --profile all up -d --wait &&
+docker compose --env-file .env.compose --profile all up -d --wait ${OTALON_SERVICES:?Select core or LLM services in step 3} &&
 docker compose --env-file .env.compose --profile all ps
 ```
 
-- Expected: all 13 services healthy. Healthy capture/AI/classifier processes do not prove packet recording, provider access or detection output.
+- Expected: selected services healthy (12 in core-only mode, 13 with LLM enabled); core-only mode does not start `otalon-ai`. These variables do not stop a previously running AI container; choose any stop explicitly. Healthy capture/classifier processes do not prove packets/detection output, and healthy AI does not prove provider access.
 
 ## 13. Browser login; change bootstrap password
 
@@ -231,17 +248,18 @@ curl -kfsS https://127.0.0.1:8443/ >/dev/null
 - **Persistence:** record the imported range/result first. On this acceptance installation only, perform the planned recreate below, then repeat login, job/history and data checks. Keep the changed password, rows and volumes; do not re-upload to make missing data appear.
 
 ```sh
-docker compose --env-file .env.compose --profile all up -d --force-recreate --wait &&
+docker compose --env-file .env.compose --profile all up -d --force-recreate --wait ${OTALON_SERVICES:?Select core or LLM services in step 3} &&
 docker compose --env-file .env.compose --profile all ps
 ```
 
-- **AI/detection:** test real chat/jobs using your actual gateway/aliases and enabled profiles/artifacts separately. Initial classifier artifacts are not supplied; retraining needs an existing classifier and real telemetry/labels/reference data. Never disable detection to make startup green.
+- **Core detection:** verify enabled profiles/artifacts and actual anomaly/frequency/classifier output using live traffic. Initial classifier artifacts are not supplied; retraining needs an existing classifier and real telemetry/labels/reference data. Never disable detection to make startup green.
+- **LLM, only when selected:** test chat/classification/jobs with your real gateway/aliases separately. Without LLM, those functions are unavailable; no provider key/model required for core. The UI may report unavailable AI; do not interpret that as core startup failure.
 - **Record failures:** step/command or UI action, error/status, expected vs actual and timestamp; redact credentials. Browser auth, UI PCAP/persistence, real provider loops and physical Windows capture remain unverified until exercised on your target.
 - **Updates:** build/recreate affected services after source changes; recreate after env changes, not merely restart. Never use `down -v` or delete volumes to fix credentials. Reference: [MCP docs](otalon-mcp/docs/).
 
-## Windows capture → manual import
+## Optional diagnostic: Windows file capture
 
-**Available route:** physical Windows NIC → Npcap/dumpcap → closed PCAP → manual browser upload. This is **not** continuous WSL monitoring or a validated WSL deployment; the step-12 stop still applies. Upload requires an already running, authorized OTALON UI (a separately verified Linux deployment is also a valid target).
+This finite file-capture recipe is **not the required continuous WSL operation**. Skip it when installing for ongoing monitoring; the continuous collector/receiver/recovery path is still pending. Existing manual import remains supported for separate diagnostics. Upload requires an already running, authorized OTALON UI; this section does not lift the WSL step-12 stop.
 
 1. On **Windows**, install [Wireshark](https://www.wireshark.org/download.html) with [Npcap](https://npcap.com/guide/npcap-users-guide.html). Follow organization policy; review Npcap licensing separately rather than bundling its installer. Reboot if requested.
 2. Use an authorized physical Ethernet NIC; it must actually receive the desired traffic (for other devices, arrange an approved SPAN/mirror or TAP feed). A Windows/WSL virtual adapter is not a substitute. Do not trigger active scans to create test traffic.

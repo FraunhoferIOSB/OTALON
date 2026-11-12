@@ -216,7 +216,9 @@ def _validate_url(value: str, *, allow_offline_marker: bool = False) -> None:
         )
 
 
-def check(workspace_arg: str, env_arg: str | None, syntax_only: bool) -> int:
+def check(
+    workspace_arg: str, env_arg: str | None, syntax_only: bool, without_ai: bool = False
+) -> int:
     workspace = absolute_workspace(workspace_arg)
     env_path = checked_path(workspace, env_arg or ".env.compose")
     sample_path = checked_path(workspace, ".env.compose.sample")
@@ -228,27 +230,33 @@ def check(workspace_arg: str, env_arg: str | None, syntax_only: bool) -> int:
         raise InstallError("Sample environment file is not valid UTF-8") from exc
 
     required = sample_required_keys(sample)
+    if without_ai:
+        required.difference_update(EXTERNAL_KEYS)
     unresolved_required = reject_unresolved(document, required)
     if unresolved_required:
         raise InstallError(
             "Required values missing or unresolved: " + ", ".join(unresolved_required)
         )
-    _validate_url(
-        document.resolved.get("LITELLM_BASE_URL", ""), allow_offline_marker=syntax_only
-    )
-    for key in EXTERNAL_KEYS:
-        if (
-            key not in document.resolved
-            or not document.resolved[key]
-            or has_placeholder(document.resolved[key])
-        ):
-            raise InstallError(
-                f"{key}: external endpoint or served model alias is not configured"
-            )
+    if not without_ai:
+        _validate_url(
+            document.resolved.get("LITELLM_BASE_URL", ""),
+            allow_offline_marker=syntax_only,
+        )
+        for key in EXTERNAL_KEYS:
+            if (
+                key not in document.resolved
+                or not document.resolved[key]
+                or has_placeholder(document.resolved[key])
+            ):
+                raise InstallError(
+                    f"{key}: external endpoint or served model alias is not configured"
+                )
+        _validate_model_aliases(document)
     for key in document.resolved:
+        if without_ai and key in EXTERNAL_KEYS:
+            continue
         if has_placeholder(document.resolved[key]):
             raise InstallError(f"{key}: unresolved placeholder")
-    _validate_model_aliases(document)
 
     password = document.resolved.get("POSTGRES_PASSWORD", "")
     if not HEX64_RE.fullmatch(password):
@@ -278,6 +286,14 @@ def check(workspace_arg: str, env_arg: str | None, syntax_only: bool) -> int:
     build_ref = document.resolved.get("OTALON_BUILD_REF", "")
     if not build_ref or has_placeholder(build_ref):
         raise InstallError("OTALON_BUILD_REF: checkout reference is missing")
+
+    if without_ai:
+        prefix = "Syntax-only: " if syntax_only else ""
+        print(
+            prefix
+            + "local core configuration passed; LLM features unavailable (--without-ai)."
+        )
+        return 0
 
     if syntax_only:
         print(
@@ -314,9 +330,14 @@ def main() -> int:
         action="store_true",
         help="check local syntax/shapes only; this does not establish external readiness",
     )
+    parser.add_argument(
+        "--without-ai",
+        action="store_true",
+        help="validate core installation only; retain external LLM values and exclude the AI service at startup",
+    )
     args = parser.parse_args()
     try:
-        return check(args.workspace, args.env_file, args.syntax_only)
+        return check(args.workspace, args.env_file, args.syntax_only, args.without_ai)
     except OSError:
         print("Filesystem operation failed", file=sys.stderr)
         return 1
