@@ -2,7 +2,7 @@
 
 - **Native Linux:** rootful Docker Engine, Compose v2+, `git`, `sudo`, Python 3.10+, `curl`; working Docker access and internet for dependencies.
 - **Tested 2026-11-11:** fresh Ubuntu 24.04 VM; 11 images built, databases initialized, migration `0015` stored, 13 services healthy, HTTPS and import-mount checks passed. Offline gateway markers and VM loopback were test adaptations, **not** proof of AI, physical capture or full acceptance.
-- **WSL2 + Docker Desktop:** build/development only in this guide. Full Windows/Npcap capture integration is not implemented here. Desktop host networking is TCP/UDP (layer 4), not direct physical-NIC access. Stop before step 12 for physical capture/scanning. See [Docker limitations](https://docs.docker.com/engine/network/drivers/host/).
+- **WSL2 + Docker Desktop:** the suite setup below is build/DB testing only on Desktop, not a validated full deployment. For physical traffic, use [Windows capture → manual import](#windows-capture--manual-import) below; automatic continuous ingestion is not implemented. Desktop host networking is TCP/UDP (layer 4), not direct physical-NIC access. Stop before step 12 on WSL. See [Docker limitations](https://docs.docker.com/engine/network/drivers/host/).
 - **Security:** DB ports `5432`/`8181` publish on all host interfaces. Restrict access before startup. API has root-equivalent Docker-socket access, read-only host-root mounts and a writable checkout; read-only mounts can still disclose host data.
 - Run each block in order; **stop on an error**. Keep the same shell and checkout. Do not print credentials, resolved Compose configuration or connection strings.
 
@@ -222,3 +222,39 @@ docker compose --env-file .env.compose --profile all ps
 - **AI/detection:** test real chat/jobs using your actual gateway/aliases and enabled profiles/artifacts separately. Initial classifier artifacts are not supplied; retraining needs an existing classifier and real telemetry/labels/reference data. Never disable detection to make startup green.
 - **Record failures:** step/command or UI action, error/status, expected vs actual and timestamp; redact credentials. Browser auth, UI PCAP/persistence, real provider loops and physical Windows capture remain unverified until exercised on your target.
 - **Updates:** build/recreate affected services after source changes; recreate after env changes, not merely restart. Never use `down -v` or delete volumes to fix credentials. Reference: [MCP docs](otalon-mcp/docs/).
+
+## Windows capture → manual import
+
+**Available route:** physical Windows NIC → Npcap/dumpcap → closed PCAP → manual browser upload. This is **not** continuous WSL monitoring or a validated WSL deployment; the step-12 stop still applies. Upload requires an already running, authorized OTALON UI (a separately verified Linux deployment is also a valid target).
+
+1. On **Windows**, install [Wireshark](https://www.wireshark.org/download.html) with [Npcap](https://npcap.com/guide/npcap-users-guide.html). Follow organization policy; review Npcap licensing separately rather than bundling its installer. Reboot if requested.
+2. Use an authorized physical Ethernet NIC; it must actually receive the desired traffic (for other devices, arrange an approved SPAN/mirror or TAP feed). A Windows/WSL virtual adapter is not a substitute. Do not trigger active scans to create test traffic.
+3. Open **Windows PowerShell**, not the Ubuntu/WSL shell. Elevate only if your Npcap permissions require it. List interfaces:
+
+```powershell
+$dumpcap = Join-Path $env:ProgramFiles 'Wireshark\dumpcap.exe'
+$capinfos = Join-Path $env:ProgramFiles 'Wireshark\capinfos.exe'
+if (!(Test-Path $dumpcap) -or !(Test-Path $capinfos)) { throw 'Wireshark tools not found; check the installation path' }
+& $dumpcap -D
+if ($LASTEXITCODE -ne 0) { throw 'Interface listing failed; check Npcap and permissions' }
+```
+
+4. In the **same PowerShell session**, enter the exact number or device name from the listing. Capture stops at 60 seconds or the 102400-kB file-size threshold; check free space first (thresholds are not a strict disk quota). Keep captures in an organization-approved private directory; the example uses your local application-data directory.
+
+```powershell
+$nic = Read-Host 'Approved physical interface number or device name'
+if ([string]::IsNullOrWhiteSpace($nic)) { throw 'No interface selected' }
+$dir = Join-Path $env:LOCALAPPDATA 'OTALON\captures'
+New-Item -ItemType Directory -Path $dir -Force -ErrorAction Stop | Out-Null
+$file = Join-Path $dir ('capture-' + [guid]::NewGuid().ToString('N') + '.pcap')
+& $dumpcap -i $nic -F pcap -a duration:60 -a filesize:102400 -w $file
+if ($LASTEXITCODE -ne 0) { throw 'Capture failed; retain the error and do not import a partial file' }
+& $capinfos -c -a -e $file
+if ($LASTEXITCODE -ne 0) { throw 'Capture file validation failed' }
+$file
+```
+
+5. Wait for dumpcap to exit; inspect the reported **packet count and original capture timestamps**. Zero packets is not acceptance: check the selected NIC/feed. Do not upload a growing file, retime packets or overwrite existing evidence. These Windows commands require validation on your actual Windows/Npcap system; Linux CLI checks are not that proof.
+6. In the **Windows browser**, open your already running OTALON UI. Follow step 13, then **Operations → Data Sources → PCAP Import & Replay**; upload the printed Windows file directly. No copy into WSL, host bind mount or container command is needed. Wait for `completed`, use **Set time range**, and perform the data/persistence checks in step 14. Manual imports do not automatically run historical detection.
+
+**Continuous WSL capture — not implemented:** a Windows collector must safely retain/forward closed files to an authenticated receiver; native/Python measurement state must span file boundaries/restarts; delayed data needs durable progress and separate detection recovery. Desktop Compose integration and real Windows → metrics → detection/UI, outage/restart and persistence tests remain required. Do not configure a Windows device name as `CAPTURE_SOURCE`, enable container privileges as a raw-NIC workaround, or automate independent per-file imports and call them equivalent live monitoring. References: [dumpcap options](https://www.wireshark.org/docs/man-pages/dumpcap.html), [capinfos](https://www.wireshark.org/docs/man-pages/capinfos.html), [Desktop limitations](https://docs.docker.com/engine/network/drivers/host/).
