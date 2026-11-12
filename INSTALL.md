@@ -1,11 +1,12 @@
 # Install OTALON
 
-- **Full capture/scanning:** rootful Docker Engine on an authorized native Linux host; Compose v2+.
-- **WSL2 + Docker Desktop:** build/development only in this guide. Desktop host networking is TCP/UDP (layer 4), not direct physical-NIC access. Do not run step 12 for physical OT capture/scanning under Desktop. No full WSL installation has been verified. See [Docker host-network limitations](https://docs.docker.com/engine/network/drivers/host/).
-- Tools: `git`, `sudo`, `python3`, Docker/Compose; internet access for image/package downloads and pinned native build dependencies.
-- Security: PostgreSQL `5432` and InfluxDB `8181` publish on **all host interfaces**. Restrict them with an approved firewall before starting. `HTTP_PLAIN_*` settings do not change this.
+- **Native Linux:** rootful Docker Engine, Compose v2+, `git`, `sudo`, Python 3.10+, `curl`; working Docker access and internet for dependencies.
+- **Tested 2026-11-11:** fresh Ubuntu 24.04 VM; 11 images built, databases initialized, migration `0015` stored, 13 services healthy, HTTPS and import-mount checks passed. Offline gateway markers and VM loopback were test adaptations, **not** proof of AI, physical capture or full acceptance.
+- **WSL2 + Docker Desktop:** build/development only in this guide. Full Windows/Npcap capture integration is not implemented here. Desktop host networking is TCP/UDP (layer 4), not direct physical-NIC access. Stop before step 12 for physical capture/scanning. See [Docker limitations](https://docs.docker.com/engine/network/drivers/host/).
+- **Security:** DB ports `5432`/`8181` publish on all host interfaces. Restrict access before startup. API has root-equivalent Docker-socket access, read-only host-root mounts and a writable checkout; read-only mounts can still disclose host data.
+- Run each block in order; **stop on an error**. Keep the same shell and checkout. Do not print credentials, resolved Compose configuration or connection strings.
 
-## 1. Clone
+## 1. Clone or update
 
 ```sh
 git clone https://github.com/FraunhoferIOSB/OTALON.git /home/user/otalon
@@ -13,58 +14,67 @@ cd /home/user/otalon
 export WORKSPACE_DIR="$PWD"
 ```
 
+- Existing clone: skip `git clone`, enter your actual checkout, run `git pull --ff-only`, and export `WORKSPACE_DIR="$PWD"`. Review local changes if the pull refuses; do not reset them.
+- Existing installation: preserve `.env.compose`, bootstrap files and volumes. A fresh clone does not make existing Docker volumes empty.
+
 ## 2. Join the shared group
 
 ```sh
 getent group 10000 || sudo groupadd -g 10000 otalon-shared
 sudo usermod -aG "$(getent group 10000 | cut -d: -f1)" "$USER"
 newgrp "$(getent group 10000 | cut -d: -f1)"
+```
+
+At the **new shell prompt**, run:
+
+```sh
 cd /home/user/otalon
 export WORKSPACE_DIR="$PWD"
 id
 ```
 
-- Confirm GID `10000` appears. Membership grants write access to shared application files.
-- `newgrp` opens a new shell. Run the following `cd`, `export` and `id` lines at its new prompt. Continue the installation in this shell; `exit` returns to the old shell, whose group membership has not changed. Alternatively, log out and log in again after `usermod`, then repeat `cd`, `export` and `id`.
+- Use your actual checkout path if different. Confirm GID `10000` appears; group members can write shared application files.
+- Continue in this shell. `exit` returns to the old shell without refreshed membership. Alternatively, log out/in after `usermod`, then repeat `cd`, export and `id`.
 
-## 3. Create the local configuration once
+## 3. Create local configuration once
 
 ```sh
 if [ ! -e .env.compose ] && [ ! -L .env.compose ]; then
-  python3 scripts/install/setup.py --workspace "$WORKSPACE_DIR"
-  sudo chown 10001:10000 .env.compose
+  python3 scripts/install/setup.py --workspace "$WORKSPACE_DIR" &&
+  sudo chown 10001:10000 .env.compose &&
   sudo chmod 0660 .env.compose
 fi
 stat -c '%u:%g %a %n' .env.compose
 ```
 
-- Expected: `10001:10000 660 .env.compose`. Never overwrite a configured file from the sample. Existing files are not re-owned or re-moded automatically; stop if the displayed metadata differs and review it explicitly. Symlinks are rejected by the setup helper.
+- Expected: `10001:10000 660 .env.compose`. Existing files are not overwritten, re-owned or re-moded automatically; review unexpected metadata explicitly.
+- Never copy the sample over configured credentials. The helpers reject symlink/hardlinked inputs.
 
-## 4. Generate local secrets; configure external dependencies
+## 4. Generate secrets; configure gateway and interfaces
 
 ```sh
 python3 scripts/install/setup.py --workspace "$WORKSPACE_DIR"
 ```
 
-- This fills only missing/template local DB, service and callback secrets with cryptographic randomness, and derives the checkout path/build reference. Configured values, comments, order, inode, owner and mode are preserved. It never generates external provider credentials or selects capture/scan interfaces. Output lists variable names only; a successful setup is not deployment readiness.
-- The helpers use a restricted environment-file grammar: single quotes are literal, and bare/double-quoted `${NAME}` references must follow their inputs. Shell commands, unsupported substitutions, duplicate assignments and symlink/hardlinked inputs fail before writes. See [Local Installer Utilities](scripts/install/README.md).
-- LiteLLM is a gateway between OTALON and your model provider. For this bounded installation path, use an existing reachable LiteLLM-compatible gateway; no gateway, upstream subscription, credentials or models are bundled. A gateway alone does not provide an LLM. Obtain its `/v1` URL, access key and actually served chat/job aliases before proceeding. The optional bundled-gateway and full WSL deployment paths remain separate, unverified work.
+- Generates only missing/template local DB, service and callback secrets; derives checkout/build reference. Configured values, comments, order, inode, owner and mode remain intact. A repeat can report `Updated 0 keys`; external fields may still be missing.
+- **LiteLLM first:** this gateway connects OTALON to your model provider. This guide requires an existing reachable LiteLLM-compatible gateway, its `/v1` URL/access key and actually served chat/job aliases. Upstream provider credentials are separate. No gateway, subscription or models are bundled; the optional bundled-proxy path remains pending.
 
 ```sh
 nano .env.compose
 ```
 
-- Use an interactive terminal. In Nano, press `Ctrl+O`, then Enter to save, and `Ctrl+X` to exit. Do not print the configured file or paste its contents into chat.
+Edit only the top **EDIT THIS SECTION** block:
+- `WORKSPACE_DIR`, `OTALON_BUILD_REF`: confirm generated values; review timezone defaults.
+- `CAPTURE_SOURCE`, `SCAN_SOURCE`: approved real host interfaces, not sample lab names. Do not select an OT mirror port for active scanning.
+- `LITELLM_BASE_URL`, `LITELLM_API_KEY`, `CHAT_LLM_MODEL`, `JOBS_LLM_MODEL`: your gateway and served aliases; a nonempty value is not reachability proof.
+- Local DB/service/callback secrets: generated by setup. Keep existing credentials; env edits do not rotate persisted DB passwords/tokens. Caller registries reuse these fields.
+- Optional `NVD_API_KEY`; keep reviewed detection/blacklist defaults. Never commit `.env.compose` or send it in chat.
 
-Edit only the top EDIT THIS SECTION block:
-- `WORKSPACE_DIR`: confirm the derived absolute checkout path; review timezone defaults.
-- `CAPTURE_SOURCE`, `SCAN_SOURCE`: approved, real host interfaces, not the sample's lab names. The helper does not authorize them.
-- `POSTGRES_PASSWORD`, `INFLUX_TOKEN`, API/service keys and `PCAP_IMPORT_WORKER_TOKEN`: generated locally when missing/template. Keep configured credentials; do not rotate them to fix an existing database. Allow-lists and callback inputs reuse these values automatically.
-- `LITELLM_BASE_URL` (ending `/v1`), `LITELLM_API_KEY`, `CHAT_LLM_MODEL`, `JOBS_LLM_MODEL`: configure the external gateway and served aliases manually. The sample endpoint is not proof of availability.
-- `OTALON_BUILD_REF`: confirm the derived checkout reference. Optional `NVD_API_KEY`; keep reviewed feature/blacklist defaults unless needed.
-- Never send credentials in chat or commit `.env.compose`.
+- Nano: `Ctrl+O`, Enter to save; `Ctrl+X` to exit. Use an interactive terminal.
+- Helpers accept a restricted env grammar: single quotes are literal; bare/double-quoted `${NAME}` references follow their inputs. Unsupported substitutions/duplicates fail before writing. See [helper reference](scripts/install/README.md).
+- **No gateway yet?** The normal checker will refuse. `--syntax-only` with explicit offline markers is only a bounded infrastructure-test adaptation, not full installation or AI readiness. Do not substitute fake credentials for acceptance.
 
-## 5. Prepare shared directories and access
+## 5. Prepare shared directories
 
 ```sh
 sudo install -d -o root -g root -m 0755 shared
@@ -74,38 +84,36 @@ sudo install -d -o root -g 10000 -m 2775 \
 sudo install -d -o root -g root -m 0750 shared/tls
 ```
 
-- Review before deployment: API mounts the Docker socket (**root-equivalent administration**), `/`, `/home`, `/var` read-only (**host-data disclosure**) and the full checkout read/write. Read-only does not mean confidential.
-- Optional, for API-saved configuration: grant GID 10000 create/rename access to the checkout root. This grants every member checkout-root write access:
+- Do not recursively change existing data. Optional API-saved configuration requires checkout-root create/rename access for GID 10000; this grants every group member checkout-root write access:
 
 ```sh
 sudo chgrp 10000 "$WORKSPACE_DIR"
 sudo chmod g+ws "$WORKSPACE_DIR"
 ```
 
-- Do not recursively change existing data. API atomic env-file updates can set legacy mode `0644`; restore `sudo chmod 0660 .env.compose` after such updates.
+- API atomic env updates can set legacy mode `0644`; restore `sudo chmod 0660 .env.compose` after such updates.
 
-## 6. Check configuration without printing secrets
+## 6. Check configuration
 
 ```sh
-python3 scripts/install/check.py --workspace "$WORKSPACE_DIR"
+python3 scripts/install/check.py --workspace "$WORKSPACE_DIR" &&
 docker compose --env-file .env.compose --profile all config --quiet
 ```
 
-- Stop on errors; do not paste resolved configuration. Both checker modes validate local shapes only and do not contact the gateway or establish served-model availability. `--syntax-only` permits explicit offline/sample endpoint markers and is not an installation readiness gate. Build consumes `DOCKER_GID`; database credentials take effect at initialization/start, not image build.
+- Stop on errors. Both checker modes validate local shapes only, not endpoint/model availability. Build resolves Compose inputs but does not initialize databases.
 
 ## 7. Create InfluxDB's bootstrap token file
 
-- `INFLUX_TOKEN` alone does **not** provision the server. Compose mounts this local JSON for `--admin-token-file` (image UID/GID `1500:1500`). Existing tokens are not rotated by env changes.
-
 ```sh
-sudo python3 scripts/install/bootstrap_influx.py --workspace "$WORKSPACE_DIR"
+sudo python3 scripts/install/bootstrap_influx.py --workspace "$WORKSPACE_DIR" &&
+sudo stat -c '%u:%g %a %n' shared/influx-admin-token.json
 ```
 
-- An existing matching file must already be owned by `1500:1500` with mode `0600`; bytes, inode and metadata are preserved. Mismatched credentials, malformed/duplicate JSON, unsafe links or incompatible metadata fail without automatic repair. Review failures explicitly; never delete persisted database volumes to make a token change work.
+- Expected: `1500:1500 600 shared/influx-admin-token.json`. Ordinary-user read denial is expected; do not print its JSON or loosen permissions.
+- This file must exist **before** starting InfluxDB; Compose mounts it for `--admin-token-file`. `INFLUX_TOKEN` alone does not provision the server.
+- Matching existing bytes/metadata are preserved. Mismatched tokens, malformed JSON or incompatible metadata refuse without automatic repair. Do not delete DB volumes to fix credentials.
 
-## 8. Determine the Docker socket GID; build
-
-- Inspect the **daemon-mounted socket**, not just the WSL group named `docker`. The inspection does not call the socket API; a read-only mount is not a general socket security restriction.
+## 8. Determine Docker socket GID; build
 
 ```sh
 DOCKER_GID="$(docker run --rm --network none \
@@ -119,6 +127,9 @@ docker compose --env-file .env.compose --profile all build \
   --build-arg "DOCKER_GID=$DOCKER_GID"
 ```
 
+- Use the daemon-mounted socket's GID, not merely a group named `docker`. The probe does not call the socket API; a read-only socket mount is not a general security restriction.
+- The first build downloads native/Python/Node dependencies and can take several minutes. Wait for successful completion; a built image is not a running service.
+
 ## 9. Prepare the PCAP import volume
 
 ```sh
@@ -127,60 +138,87 @@ docker compose --env-file .env.compose --profile all run --rm --no-deps \
   -c 'chown 0:10000 /import && chmod 2770 /import'
 ```
 
-## 10. Start databases; initialize InfluxDB
+## 10. Start databases; create Influx database if absent
 
 ```sh
-docker compose --env-file .env.compose --profile core-db up -d --wait postgres influxdb3
-docker compose --env-file .env.compose --profile core-db exec influxdb3 influxdb3 show databases
-# Fresh installation only: run the next command if and only if netcap is absent:
-docker compose --env-file .env.compose --profile core-db exec influxdb3 influxdb3 create database netcap
-docker compose --env-file .env.compose --profile core-db exec influxdb3 influxdb3 show databases
+docker compose --env-file .env.compose --profile core-db up -d --wait postgres influxdb3 &&
+docker compose --env-file .env.compose --profile core-db exec -T influxdb3 influxdb3 show databases
 ```
 
-- Confirm `netcap`. CLI reads its token from the container environment; no `--token` argument.
-- If and only if `netcap` is absent from the first `show databases` output, run `create database netcap`. If it is already listed, skip creation and continue with the final `show databases` check.
-- PostgreSQL applies `POSTGRES_PASSWORD` **only when initializing an empty data volume**. Changing `.env.compose` does not rotate a persisted password.
+If and only if the successful listing does **not** contain `netcap`, run:
 
-## 11. Apply migrations BEFORE starting consumers
+```sh
+docker compose --env-file .env.compose --profile core-db exec -T influxdb3 influxdb3 create database netcap
+```
 
-- **Docker Desktop prerequisite:** enable **Settings → Resources → Network → Enable host networking**, apply/restart Desktop and verify database connectivity first. This one-off reaches PostgreSQL at `127.0.0.1`; the setting does not enable physical-NIC capture.
+Then confirm it is present:
+
+```sh
+docker compose --env-file .env.compose --profile core-db exec -T influxdb3 influxdb3 show databases
+```
+
+- CLI uses the container's `INFLUXDB3_AUTH_TOKEN`; do not put a token in command arguments.
+- PostgreSQL initializes the configured `POSTGRES_DATABASE` (sample: `otalon`), not necessarily the maintenance database `postgres`. Password applies only to an empty data volume.
+
+## 11. Migrate before starting consumers
+
+- **Docker Desktop build/DB testing:** enable **Settings → Resources → Network → Enable host networking**, apply/restart Desktop and verify DB connectivity before these host-networked one-offs. This does not enable physical capture.
 
 ```sh
 docker compose --env-file .env.compose --profile all run --rm --no-deps \
-  --entrypoint python otalon-scan -m alembic -c /app/alembic.ini upgrade head
+  --entrypoint python otalon-scan -m alembic -c /app/alembic.ini upgrade head &&
 docker compose --env-file .env.compose --profile all run --rm --no-deps \
   --entrypoint python otalon-scan -m alembic -c /app/alembic.ini current
 ```
 
-- Current migration: `0015`. Stop if migration fails.
-
-## 12. Start the full stack — native Linux capture host only
-
-- Confirm interfaces, target scope, firewall and network-owner approval. Capture/scan use host networking, `NET_RAW`/`NET_ADMIN`. Do not use active scans as smoke tests.
-- **WSL/Docker Desktop:** stop before this step for physical capture/scanning; this guide supplies no verified alternative deployment.
+Read the **stored** revision from the configured database:
 
 ```sh
-docker compose --env-file .env.compose --profile all up -d --wait
+docker compose --env-file .env.compose --profile core-db exec -T postgres \
+  sh -c 'exec psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -Atc "SELECT version_num FROM alembic_version"'
+```
+
+- Expected revision for this source: `0015`. `alembic current` returned exit 0 without a printed revision in the test; use the SQL readback rather than treating empty output as proof.
+- Stop if upgrade/readback fails. Querying the wrong `postgres` database can report a missing `alembic_version` table even when migration succeeded in `otalon`.
+
+## 12. Start the suite — authorized native Linux host only
+
+- Confirm interfaces, firewall and network-owner approval **before** this block. Capture/scan have host networking and `NET_RAW`/`NET_ADMIN`; do not trigger active scans as smoke tests.
+- **WSL/Desktop physical capture: stop before this block.** The Windows collector/receiver and late-data handling remain pending; there is no raw-NIC workaround in this guide.
+
+```sh
+docker compose --env-file .env.compose --profile all up -d --wait &&
 docker compose --env-file .env.compose --profile all ps
 ```
 
-## 13. Open HTTPS; change the bootstrap password
+- Expected: all 13 services healthy. Healthy capture/AI/classifier processes do not prove packet recording, provider access or detection output.
 
-- Open `https://localhost:8443` on the deployment host (or its authorized hostname/IP).
-- First login: `admin`; use the bootstrap password shown on the login screen. Immediately complete the required password change; never expose first-start access publicly.
-- Default TLS is self-signed for `localhost`/`127.0.0.1`; manage trust or install the organization's certificate for remote access.
+## 13. Browser login; change bootstrap password
 
-## 14. Verify before operational use
+- Open `https://localhost:8443` on the deployment host, or its authorized hostname/IP. Default TLS is self-signed for `localhost`/`127.0.0.1`; use trusted organization certificates for remote access.
+- First login: `admin`, bootstrap password displayed on the login page. Complete the required password change; log out and sign in with the new password. Never expose first-start access publicly.
+- Existing accounts: keep your changed password. Rerunning setup does not reset it. Browser login/password change were **not exercised** by the native command-only test.
+
+## 14. Operator acceptance — data, not only health
 
 ```sh
-docker compose --env-file .env.compose --profile all exec otalon-api \
-  python3 -c 'import os; assert os.access("/import", os.W_OK)'
-docker compose --env-file .env.compose --profile all exec otalon-capture-pcap-import \
-  python3 -c 'import os; assert os.access("/import", os.W_OK)'
+docker compose --env-file .env.compose --profile all exec -T otalon-api \
+  python3 -c 'import os; assert os.access("/import", os.W_OK)' &&
+docker compose --env-file .env.compose --profile all exec -T otalon-capture-pcap-import \
+  python3 -c 'import os; assert os.access("/import", os.W_OK)' &&
 curl -kfsS https://127.0.0.1:8443/ >/dev/null
 ```
 
-- Check API/scan/MCP health, authorized telemetry in InfluxDB, auth rejection with missing/wrong keys and acceptance with the intended key. `/health` or an HTTP 200 alone is not data-flow proof.
-- Complete a real UI PCAP import; verify persisted measurements and successful job completion. Recheck persistence after a planned recreate; preserve database/import volumes.
-- Bounds/frequency profiles require observed telemetry. Initial classifier artifacts/bootstrap are **not provided**; retraining requires an already deployed classifier plus real telemetry/labels/reference data. Healthy containers do not prove classification or external model readiness.
-- Source changes: build/recreate affected services and verify fresh containers. Env-only changes: recreate, not merely restart. Never delete volumes to fix credentials. Development reference: [MCP documentation](otalon-mcp/docs/).
+- **Auth:** confirm logged-out protected pages require login; verify protected APIs reject missing/wrong keys and accept the intended role/key. Keep keys out of screenshots/logs.
+- **PCAP:** open **Operations → Data Sources → PCAP Import & Replay**. Upload an authorized real PCAP/PCAPNG and wait for `completed`, not just successful upload. Record filename, job ID, capture range and result counts.
+- **Data:** click **Set time range**, then inspect **Timeseries Data → Connections** at the capture's original timestamps. Verify persisted measurements; processed metric-record counts are not packet counts. Manual history import does not automatically run historical detection.
+- **Persistence:** record the imported range/result first. On this acceptance installation only, perform the planned recreate below, then repeat login, job/history and data checks. Keep the changed password, rows and volumes; do not re-upload to make missing data appear.
+
+```sh
+docker compose --env-file .env.compose --profile all up -d --force-recreate --wait &&
+docker compose --env-file .env.compose --profile all ps
+```
+
+- **AI/detection:** test real chat/jobs using your actual gateway/aliases and enabled profiles/artifacts separately. Initial classifier artifacts are not supplied; retraining needs an existing classifier and real telemetry/labels/reference data. Never disable detection to make startup green.
+- **Record failures:** step/command or UI action, error/status, expected vs actual and timestamp; redact credentials. Browser auth, UI PCAP/persistence, real provider loops and physical Windows capture remain unverified until exercised on your target.
+- **Updates:** build/recreate affected services after source changes; recreate after env changes, not merely restart. Never use `down -v` or delete volumes to fix credentials. Reference: [MCP docs](otalon-mcp/docs/).
