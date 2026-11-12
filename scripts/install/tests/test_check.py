@@ -71,14 +71,17 @@ class CheckTests(InstallerFixture):
             self.assertIn(name, result.stderr)
         self.assertNotIn("<SET_", result.stderr)
 
-    def test_syntax_only_passes_shapes_with_offline_marker_but_is_explicit(
+    def test_syntax_only_passes_shapes_with_explicit_offline_marker(
         self,
     ) -> None:
         self.setup_env()
-        self.configure(gateway=False)
+        self.configure(
+            {"LITELLM_BASE_URL": "https://gateway.invalid/v1"}, gateway=False
+        )
         content = self.env_path.read_text(encoding="utf-8")
         self.assertEqual(
-            self.read_assignment(content, "LITELLM_BASE_URL"), SAMPLE_GATEWAY_URL
+            self.read_assignment(content, "LITELLM_BASE_URL"),
+            "https://gateway.invalid/v1",
         )
         result = self.run_script("check.py", "--syntax-only")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -127,7 +130,7 @@ class CheckTests(InstallerFixture):
         self.assertIn("LITELLM_BASE_URL", result.stderr)
         self.assertNotIn("user:pass", result.stderr)
 
-        self.set_assignments({"LITELLM_BASE_URL": SAMPLE_GATEWAY_URL})
+        self.set_assignments({"LITELLM_BASE_URL": "http://offline-unconfigured/v1"})
         result = self.run_script("check.py")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("LITELLM_BASE_URL", result.stderr)
@@ -184,7 +187,7 @@ class CheckTests(InstallerFixture):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("POSTGRES_PASSWORD", result.stderr)
 
-    def test_repository_sample_syntax_passes_and_full_check_refuses_default_gateway(
+    def test_repository_sample_accepts_desktop_gateway_in_both_checker_modes(
         self,
     ) -> None:
         self.setup_env()
@@ -197,9 +200,9 @@ class CheckTests(InstallerFixture):
         self.assertEqual(syntax.returncode, 0, syntax.stderr)
         self.assertIn("NOT checked", syntax.stdout)
         full = self.run_script("check.py")
-        self.assertNotEqual(full.returncode, 0)
-        self.assertIn("LITELLM_BASE_URL", full.stderr)
-        self.assertNotIn("host.docker.internal", full.stderr)
+        self.assertEqual(full.returncode, 0, full.stderr)
+        self.assertIn("NOT verified", full.stdout)
+        self.assertNotIn(SAMPLE_GATEWAY_URL, full.stdout + full.stderr)
 
     def test_model_aliases_accept_allowed_ascii_up_to_200_characters(self) -> None:
         for alias in ("provider/model-name_v1.2:tag+x", "a" * 200):

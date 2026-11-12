@@ -19,6 +19,14 @@ export WORKSPACE_DIR="$PWD"
 
 ## 2. Join the shared group
 
+First check `command -v newgrp`. **If missing on Ubuntu/WSL**, install the package suggested by your Ubuntu release (`util-linux-extra` in the reported WSL setup; Ubuntu 24.04 uses [login](https://packages.ubuntu.com/noble/amd64/login/filelist)). For the `util-linux-extra` suggestion:
+
+```sh
+sudo apt-get update && sudo apt-get install util-linux-extra && command -v newgrp
+```
+
+- Do not proceed until `newgrp` is available. On Ubuntu 24.04, use `sudo apt-get install --reinstall login` instead. Alternatively, add the group below, then log out/in instead of calling `newgrp` and verify `id` in the fresh session.
+
 ```sh
 getent group 10000 || sudo groupadd -g 10000 otalon-shared
 sudo usermod -aG "$(getent group 10000 | cut -d: -f1)" "$USER"
@@ -50,6 +58,13 @@ stat -c '%u:%g %a %n' .env.compose
 - Expected: `10001:10000 660 .env.compose`. Existing files are not overwritten, re-owned or re-moded automatically; review unexpected metadata explicitly.
 - Never copy the sample over configured credentials. The helpers reject symlink/hardlinked inputs.
 
+## Before step 4: connect LiteLLM
+
+- **Existing gateway:** reuse its container-reachable `/v1` URL, a scoped access key and the exact served aliases for chat/jobs. Upstream provider credentials are separate; keep your working gateway/configuration.
+- **New gateway:** follow the official [LiteLLM Docker quickstart](https://docs.litellm.ai/docs/proxy/docker_quick_start) or [CLI quickstart](https://docs.litellm.ai/docs/proxy/quick_start) **in a separate directory, not this OTALON checkout**. Enable authentication, connect a real provider/model, create an access key allowed to use both aliases and send a successful test request before continuing. Review ports/firewall; do not expose an unauthenticated gateway. No bundled proxy is supplied by OTALON yet.
+- **Docker Desktop host service:** `http://host.docker.internal:4000/v1` is a valid address when the gateway is reachable through Desktop's host on port4000 ([Docker routing](https://docs.docker.com/desktop/features/networking/networking-how-tos/)). A proxy running in another WSL distro/container is not automatically that host service; verify its publication/listen address/firewall. Native Linux routing may require a different reachable host/DNS address.
+- The checker below validates configuration text, **not connectivity or model access**. A valid URL without a configured gateway/key/models is not AI acceptance.
+
 ## 4. Generate secrets; configure gateway and interfaces
 
 ```sh
@@ -57,7 +72,7 @@ python3 scripts/install/setup.py --workspace "$WORKSPACE_DIR"
 ```
 
 - Generates only missing/template local DB, service and callback secrets; derives checkout/build reference. Configured values, comments, order, inode, owner and mode remain intact. A repeat can report `Updated 0 keys`; external fields may still be missing.
-- **LiteLLM first:** this gateway connects OTALON to your model provider. This guide requires an existing reachable LiteLLM-compatible gateway, its `/v1` URL/access key and actually served chat/job aliases. Upstream provider credentials are separate. No gateway, subscription or models are bundled; the optional bundled-proxy path remains pending.
+- Use the LiteLLM URL/key/aliases prepared **before this step**; local secret generation does not provision a gateway or provider subscription.
 
 ```sh
 nano .env.compose
@@ -100,7 +115,8 @@ python3 scripts/install/check.py --workspace "$WORKSPACE_DIR" &&
 docker compose --env-file .env.compose --profile all config --quiet
 ```
 
-- Stop on errors. Both checker modes validate local shapes only, not endpoint/model availability. Build resolves Compose inputs but does not initialize databases.
+- Stop on errors. Both checker modes validate local shapes only, not endpoint/model availability. The Desktop host URL is accepted; real `.invalid`/`offline-unconfigured` markers are still refused by the normal check. Build does not initialize databases.
+- For a gateway published on the Desktop host, the literal env line is `LITELLM_BASE_URL=http://host.docker.internal:4000/v1` — no `@url:`, backticks or Markdown. Configured keys and chat/job aliases are still required. Do not use `--syntax-only` to bypass a real configuration error.
 
 ## 7. Create InfluxDB's bootstrap token file
 

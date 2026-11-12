@@ -209,9 +209,7 @@ def _validate_url(value: str, *, allow_offline_marker: bool = False) -> None:
             "LITELLM_BASE_URL: URL must end in /v1 without query or fragment"
         )
     if not allow_offline_marker and (
-        ".invalid" in value.lower()
-        or "offline-unconfigured" in value.lower()
-        or value.lower() == "http://host.docker.internal:4000/v1"
+        ".invalid" in value.lower() or "offline-unconfigured" in value.lower()
     ):
         raise InstallError(
             "LITELLM_BASE_URL: offline or invalid marker is not ready for deployment"
