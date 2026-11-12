@@ -1,0 +1,72 @@
+# Docker Desktop / WSL2: raw packets are captured by native Windows dumpcap.
+# Compose v2.24.4+ is required for !reset / !override. Keep the checkout in WSL.
+services:
+  tls-proxy:
+    ports: !override
+      - "127.0.0.1:8443:8443"
+      - "127.0.0.1:8493:8493"
+      - "127.0.0.1:9493:9493"
+    volumes:
+      - ./tls-proxy/nginx.wsl.conf:/etc/nginx/nginx.conf:ro
+  postgres:
+    ports: !override ["127.0.0.1:5432:5432"]
+  influxdb3:
+    ports: !override ["127.0.0.1:8181:8181"]
+  otalon-capture:
+    network_mode: !reset null
+    cap_add: !reset []
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    entrypoint: ["python", "-u", "-m"]
+    command: ["desktop_ingest.main"]
+    environment:
+      INFLUX_URL: http://influxdb3:8181
+      CONTINUOUS_ROOT: /app/continuous
+      CONTINUOUS_SOURCE_KEY_FILE: /run/secrets/continuous-source-key
+    volumes: !override
+      - continuous-capture-data:/app/continuous
+      - ./shared/continuous-source.key:/run/secrets/continuous-source-key:ro
+    healthcheck:
+      test: [CMD-SHELL, "curl -fsS http://127.0.0.1:9090/health || exit 1"]
+  otalon-clas:
+    environment:
+      INFLUX_URL: http://influxdb3:8181
+      PCAP_RECORDER_URL: http://otalon-capture:9090
+      CONTINUOUS_RECOVERY_ENABLED: "true"
+      CONTINUOUS_CAPTURE_URL: http://otalon-capture:9090
+      CONTINUOUS_RECOVERY_ROOT: /app/recovery
+    volumes:
+      - continuous-recovery-data:/app/recovery
+  otalon-scan:
+    network_mode: !reset null
+    cap_add: !reset []
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    command: ["python", "-m", "otalon_scan.api.server"]
+    environment:
+      OTALON_PLATFORM: desktop
+      POSTGRES_HOST: postgres
+      POSTGRES_DSN: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:${POSTGRES_PORT:-5432}/${POSTGRES_DATABASE}"
+  otalon-api:
+    environment:
+      PCAP_RECORDER_HOST: otalon-capture
+      OTALON_SCAN_HOST: otalon-scan
+      PCAP_BUFFER_DIR: /app/continuous/raw
+      PCAP_ARCHIVE_DIR: /app/continuous/raw
+      COMPOSE_OVERLAY: docker-compose.wsl.yml
+      COMPOSE_PROFILES: all
+    volumes: !override
+      - ./shared/logs:/app/logs
+      - ./shared/pcap/baseline:/app/pcap/baseline:rw
+      - ./shared/operations:/app/operations:rw
+      - pcap-import-data:/import
+      - continuous-capture-data:/app/continuous:ro
+      - ./otalon-capture/config/config_pcap.json:/app/netcap-config/config_pcap.json:ro
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+      - ${WORKSPACE_DIR}:${WORKSPACE_DIR}:rw
+  otalon-mcp:
+    environment:
+      PCAP_RECORDER_URL: http://otalon-capture:9090
+volumes:
+  continuous-capture-data:
+  continuous-recovery-data:

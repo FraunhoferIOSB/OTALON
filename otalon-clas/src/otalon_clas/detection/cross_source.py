@@ -375,7 +375,11 @@ def _load_conn_involved_alarms(
         .filter(AnomalyRecord.alarm_id.isnot(None))
         .distinct()
     )
-    query = session.query(Alarm).filter(or_(Alarm.module == "conn", Alarm.id.in_(conn_anomaly_alarm_ids)))
+    query = (
+        session.query(Alarm)
+        .filter(or_(Alarm.module == "conn", Alarm.id.in_(conn_anomaly_alarm_ids)))
+        .filter(~Alarm.id.startswith("cc_"))
+    )
     if window_start is not None:
         query = query.filter(Alarm.end_timestamp >= window_start)
     if window_stop is not None:
@@ -414,6 +418,7 @@ def _load_anomalies(
     rows = (
         session.query(AnomalyRecord)
         .filter(AnomalyRecord.module == module)
+        .filter(~AnomalyRecord.id.startswith("ccr_"))
         .filter(AnomalyRecord.is_anomaly.is_(True))
         .filter(AnomalyRecord.end_ts >= search_start)
         .filter(AnomalyRecord.start_ts <= search_stop)

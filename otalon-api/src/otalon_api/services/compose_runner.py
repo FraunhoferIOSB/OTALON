@@ -45,6 +45,12 @@ class ComposeRunner:
         self._settings = settings
         self._image = settings.compose_image
         self._compose_file = settings.compose_file
+        self._overlay = getattr(settings, "compose_overlay", "")
+        if self._overlay not in {"", "docker-compose.wsl.yml"}:
+            raise ValueError("Compose overlay is not allowed")
+        self._profiles = getattr(settings, "compose_profiles", "")
+        if self._profiles not in {"", "all", "app"}:
+            raise ValueError("Compose profile is not allowed")
         self._socket_path = "/var/run/docker.sock"
         self._default_timeout_s = 180
         self._client: docker.DockerClient | None = None
@@ -136,6 +142,16 @@ class ComposeRunner:
             args.append(service)
         return args
 
+    def _compose_prefix(self, workspace_dir: str, env_file: str) -> list[str]:
+        cmd = ["docker", "compose", "--project-directory", workspace_dir or ".", "-f", self._compose_file]
+        if self._overlay:
+            cmd += ["-f", os.path.join(workspace_dir, self._overlay)]
+        if self._profiles:
+            cmd += ["--profile", self._profiles]
+        if env_file:
+            cmd += ["--env-file", env_file]
+        return cmd
+
     def _run_container(self, args: list[str], timeout_s: int | None = None) -> tuple[int, str]:
         """Spawn a short-lived Docker CLI container to execute compose commands.
 
@@ -170,10 +186,7 @@ class ComposeRunner:
         # `.env` default and the freshly-written TRAINING_ENABLED/window values
         # would not reach recreated otalon-clas container.
         env_file = getattr(self._settings, "env_compose_path", "") or ""
-        cmd = ["docker", "compose", "--project-directory", workspace_dir or ".", "-f", self._compose_file]
-        if env_file:
-            cmd += ["--env-file", env_file]
-        cmd += args
+        cmd = self._compose_prefix(workspace_dir, env_file) + args
 
         vols = {self._socket_path: {"bind": "/var/run/docker.sock", "mode": "rw"}}
         mounts: list[Mount] = []

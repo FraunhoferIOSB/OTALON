@@ -272,7 +272,9 @@ def incremental_group_ungrouped_anomalies(
         if not new_anomalies:
             return touched_alarms
 
-        candidate_alarms: list[Alarm] = session.query(Alarm).filter(Alarm.end_timestamp >= cutoff).all()
+        candidate_alarms: list[Alarm] = (
+            session.query(Alarm).filter(Alarm.end_timestamp >= cutoff).filter(~Alarm.id.startswith("cc_")).all()
+        )
 
         # Snapshot end-timestamps of pre-existing alarms so we can later
         # tell which alarms were genuinely extended by this cycle.
@@ -902,6 +904,7 @@ def fetch_alarms_pending_classification(
     with connector.session() as session:
         query = (
             session.query(Alarm)
+            .filter(~Alarm.id.startswith("cc_"))
             .filter(Alarm.end_timestamp >= cutoff)
             .order_by(Alarm.start_timestamp.desc())
             .limit(limit)

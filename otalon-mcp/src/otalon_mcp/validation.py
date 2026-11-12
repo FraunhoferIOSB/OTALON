@@ -79,7 +79,7 @@ MAX_MITRE_LIMIT: int = 1_000
 
 # ── Identifier formats ──────────────────────────────────────────────────
 
-CHUNK_ID_PATTERN: str = r"^\d{8}_\d{6}\.pcap(?:\.l\d{1,2})?(?:\.(?:gz|zst))?$"
+CHUNK_ID_PATTERN: str = r"^(?:\d{8}_\d{6}\.pcap(?:\.l\d{1,2})?(?:\.(?:gz|zst))?|rx_[0-9a-f]{40}\.pcap)$"
 """Exact shape of a pcap_recorder chunk identifier.
 
 The recorder names chunks from ``tcpdump -w %Y%m%d_%H%M%S.pcap`` (see

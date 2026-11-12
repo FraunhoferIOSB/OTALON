@@ -763,6 +763,24 @@ def run_live(
         )
     last_grouping_time = time.monotonic()
     runtime_config = RuntimeConfigRepository(pg)
+    continuous_recovery = None
+    if os.environ.get("CONTINUOUS_RECOVERY_ENABLED", "false").lower() == "true":
+        from otalon_clas.recovery.service import CaptureRecovery
+
+        continuous_recovery = CaptureRecovery(
+            bundles, pg, pipeline_builder, runtime_config, persistence_policy=persister
+        )
+        continuous_recovery.start()
+        from otalon_clas.recovery.live_outbox import LiveOutboxPersister
+
+        persister = LiveOutboxPersister(
+            pg,
+            continuous_recovery.progress,
+            gap_tolerance_seconds=gap_tolerance,
+            suppression_service=suppression_service,
+            ml_confidence_persist_threshold=suppression_cfg.ml_confidence_persist_threshold,
+            drop_low_signal_anomalies=suppression_cfg.drop_low_signal_anomalies,
+        )
 
     group_classifier = _init_group_classifier(config)
     conn_bundle = _find_module_bundle(bundles, "conn")
@@ -781,6 +799,8 @@ def run_live(
         _touch_liveness_marker()
         while True:
             tick_start = time.monotonic()
+            if continuous_recovery is not None:
+                persister.retry()
             _live_tick(
                 config,
                 pg,
@@ -816,6 +836,8 @@ def run_live(
         # Drain whatever the interval-gated flush has not written yet so
         # a clean shutdown does not lose up to one interval of freshness.
         _flush_frequency_last_seen(bundles, force=True)
+        if continuous_recovery is not None:
+            continuous_recovery.stop()
         if frequency_invalidator is not None:
             frequency_invalidator.stop()
         bounds_invalidator.stop()
@@ -1926,6 +1948,7 @@ def _deactivate_stale_alarms(pg: PostgresConnector, gap_tolerance: int) -> None:
             updated = (
                 session.query(Alarm)
                 .filter(Alarm.is_active.is_(True))
+                .filter(~Alarm.id.startswith("cc_"))
                 .filter(Alarm.end_timestamp < inactivity_cutoff)
                 .update(
                     {Alarm.is_active: False},

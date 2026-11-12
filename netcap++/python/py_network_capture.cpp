@@ -1,4 +1,5 @@
 #include <pybind11/pybind11.h>
+#include "py_network_session.hpp"
 //#include <pybind11/stl.h>
 #include "network-capture/datatypes/uci.hpp"
 #include "network-capture/runner/capture_type.hpp"
@@ -48,6 +49,7 @@ class NetworkCapture
 
 PYBIND11_MODULE(_core, m, py::mod_gil_not_used())
 {
+    register_session(m);
     py::enum_<CaptureType>(m, "CaptureType")
       .value("PCAP", CaptureType::PCAP)
       .value("LIVE", CaptureType::LIVE);

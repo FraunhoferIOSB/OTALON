@@ -22,15 +22,13 @@ from typing import (
     runtime_checkable,
 )
 
-from fastapi import Depends, FastAPI, HTTPException
+from capture_settings_base import OperatorAuthSettings, encode_api_key
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi import Path as PathParam
-from fastapi import Query, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from loguru import logger
 from pydantic import BaseModel
 from starlette.status import HTTP_404_NOT_FOUND
-
-from capture_settings_base import OperatorAuthSettings, encode_api_key
 
 from .index import PcapChunkMeta, PcapIndex
 from .ringbuffer import RingbufferManager
@@ -381,7 +379,7 @@ SUPPORTED_FORMAT_VALUES: Tuple[str, ...] = get_args(ChunkFormat)
 SUPPORTED_FORMATS = ", ".join(f"'{value}'" for value in SUPPORTED_FORMAT_VALUES)
 """Human-readable rendering of the accepted formats, never hand-maintained."""
 
-CHUNK_ID_PATTERN = r"^(?:pcap_)?\d{8}_\d{6}\.pcap(?:\.l\d{1,2})?(?:\.(?:gz|zst))?$"
+CHUNK_ID_PATTERN = r"^(?:(?:pcap_)?\d{8}_\d{6}\.pcap(?:\.l\d{1,2})?(?:\.(?:gz|zst))?|rx_[0-9a-f]{40}\.pcap)$"
 """Exact shape of a chunk identifier, derived from the producing code.
 
 ``TcpdumpRecorder.build_command`` writes ``%Y%m%d_%H%M%S.pcap`` into the

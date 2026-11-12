@@ -398,19 +398,21 @@ class EnvComposeService:
             if "\n" in line or "\r" in line:
                 raise ValueError("refusing to write multi-line content to .env.compose")
         os.makedirs(self._dir, exist_ok=True)
+        metadata = os.stat(self._path, follow_symlinks=False) if os.path.exists(self._path) else None
+        if os.path.islink(self._path) or metadata is not None and metadata.st_nlink != 1:
+            raise ValueError("unsafe environment file")
         tmp_fd, tmp_path = tempfile.mkstemp(dir=self._dir, prefix=".env.compose.tmp.")
         try:
             with os.fdopen(tmp_fd, "w", encoding="utf-8", newline="\n") as tmp:
                 for line in new_lines:
                     tmp.write(line.rstrip("\n"))
                     tmp.write("\n")
+                tmp.flush()
+                os.fsync(tmp.fileno())
+            if metadata is not None:
+                os.chown(tmp_path, metadata.st_uid, metadata.st_gid)
+                os.chmod(tmp_path, metadata.st_mode & 0o777)
             os.replace(tmp_path, self._path)
-            # mkstemp() creates the temp file with 0600; os.replace() carries
-            # those bits onto .env.compose. The sibling compose runner spawns
-            # a non-root docker-cli container that must READ this file via
-            # `--env-file`, so widen to 0644. Without this the next
-            # `recreate` action fails with "permission denied" on the env file.
-            os.chmod(self._path, 0o644)
         except Exception as exc:
             try:
                 os.remove(tmp_path)
@@ -452,7 +454,14 @@ def _is_sensitive(key: str) -> bool:
         True if the key likely contains a secret.
     """
     k = (key or "").upper()
-    return "TOKEN" in k or "PASSWORD" in k or "DSN" in k or k.endswith("_SECRET") or k.endswith("_KEY")
+    return (
+        "TOKEN" in k
+        or "PASSWORD" in k
+        or "DSN" in k
+        or k.endswith("_SECRET")
+        or k.endswith("_KEY")
+        or k.endswith("_ALLOWED_KEYS")
+    )
 
 
 def _mask_value(value: str, full: bool = False) -> str:

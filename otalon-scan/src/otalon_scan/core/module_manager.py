@@ -795,6 +795,12 @@ class ModuleManager:
         not "anything goes" — downstream code may rely on the schema
         contract documented by the per-module Pydantic models.
         """
+        normalized = (module_name or "").split("/")[-1]
+        if os.environ.get("OTALON_PLATFORM", "native").lower() == "desktop" and normalized in {
+            "arp_scan",
+            "pn_discovery",
+        }:
+            raise ValueError("Docker Desktop cannot run physical raw-L2 discovery; use routed protocol scans only")
         self._clean_up_finished_modules()
         try:
             normalized = (module_name or "").split("/")[-1]

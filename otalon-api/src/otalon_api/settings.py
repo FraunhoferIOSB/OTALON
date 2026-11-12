@@ -383,6 +383,8 @@ class Settings(BaseSettings):
         description="Container-visible path of the host log directory for the storage-footprint estimate.",
     )
 
+    compose_overlay: str = Field(default="", description="Fixed optional docker-compose.wsl.yml overlay")
+    compose_profiles: str = Field(default="", description="Selected lifecycle profile (all or app)")
     compose_image: str = Field(default="docker:24.0.9-cli", description="Docker image for compose runner")
     compose_file: str = Field(
         default="/home/user/otalon-github/docker-compose.yml",
