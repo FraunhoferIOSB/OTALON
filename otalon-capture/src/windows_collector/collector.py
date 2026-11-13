@@ -97,7 +97,8 @@ CREATE TABLE IF NOT EXISTS files(run TEXT,
         ordinal = int(match[1]) - 1
         if ordinal < 0:
             raise ValueError("invalid capture ordinal")
-        with path.open("rb") as f:
+        # Windows file synchronization requires a writable, non-truncating handle.
+        with path.open("r+b") as f:
             os.fsync(f.fileno())
         with self.db:
             self.db.execute(

@@ -42,7 +42,7 @@ services:
     cap_add: !reset []
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
-    command: ["python", "-m", "otalon_scan.api.server"]
+    command: ["python", "-m", "uvicorn", "otalon_scan.api.server:app", "--host", "0.0.0.0", "--port", "8091", "--forwarded-allow-ips", "*"]
     environment:
       OTALON_PLATFORM: desktop
       POSTGRES_HOST: postgres

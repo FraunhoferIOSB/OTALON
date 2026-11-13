@@ -2,20 +2,23 @@
 
 - **Linux:** rootful Docker Engine, Compose v2+, Git, sudo, Python 3.10+, curl.
 - **Windows:** WSL2 Ubuntu, Docker Desktop with WSL integration, Compose 2.24.4+, native Windows Python 3.10+, Wireshark with Npcap. Keep the checkout on WSL's Linux filesystem.
-- **Status:** native isolated builds/DB startup and Linux receiver/HTTPS/recovery tests are recorded. The continuous Desktop path is implemented in source but **not release-qualified**: final fresh-image, Windows/Npcap, browser and recovery/persistence gates remain open. Do not treat Linux fixtures as physical Windows acceptance.
+- **Status:** native isolated builds/DB startup, Linux receiver/HTTPS/recovery tests and a limited physical Windows/Npcap handoff test are recorded. The continuous Desktop path is **not release-qualified**: cache-free builds, complete data processing, browser and recovery/persistence gates remain open. See the acceptance limits in step 14; healthy services and accepted chunks are not full acceptance.
 - **LLM gateway optional:** core capture/detection/UI work without LiteLLM; LLM chat/classification/jobs do not.
 - **Security:** native DB ports publish on all interfaces; restrict them before startup. Desktop overlay binds published ports to loopback and removes raw-capture privileges/host-root mounts. API Docker-socket and writable-checkout access remain root-equivalent. Capture only an authorized NIC/SPAN/TAP feed; no active scans as smoke tests.
 - Run blocks in order in the same shell; stop on errors. Never print keys, resolved Compose configuration or DSNs. Existing env files, certificates and volumes must be preserved.
+- Steps 1-11 run in **Ubuntu Bash**, not Windows PowerShell. Step 13 explicitly switches between the two shells. In Windows PowerShell, check `py -3 --version` before starting installation. If `py` is missing, install native Python 3.10+ with its Windows launcher and reopen PowerShell; Ubuntu's Python is not a replacement.
 
 ## 1. Clone
 
 ```sh
-git clone https://github.com/FraunhoferIOSB/OTALON.git /home/user/otalon
+git clone --single-branch --branch wip/suite069-continuous \
+  https://github.com/FraunhoferIOSB/OTALON.git /home/user/otalon
 cd /home/user/otalon
 export WORKSPACE_DIR="$PWD"
 ```
 
-- Existing checkout: skip clone; enter its actual path and use `git pull --ff-only`. Do not reset local changes or recopy the env sample.
+- This candidate installation targets `wip/suite069-continuous`; confirm with `git branch --show-current`. HTTPS does not require a GitHub SSH key. An SSH `Permission denied (publickey)` is an authentication failure, not an installation failure; use HTTPS rather than creating a second checkout.
+- Existing checkout: skip clone; enter its actual path and use `git pull --ff-only`. Do not reset local changes or recopy the env sample. Linux paths are case-sensitive: `/home/user/OTALON` and `/home/user/otalon` are different paths. Use your actual path in every later `cd`.
 
 ## 2. Join the shared group
 
@@ -40,8 +43,14 @@ id
 ## 3. Select platform and core services
 
 ```sh
-# Choose native OR desktop. On WSL use desktop.
-INSTALL_PLATFORM=native
+# Run from the checkout root, including in each new Ubuntu shell.
+export WORKSPACE_DIR="$PWD"
+# WSL requires the Desktop receiver; other Linux hosts use native capture.
+if grep -qi microsoft /proc/sys/kernel/osrelease; then
+  INSTALL_PLATFORM=desktop
+else
+  INSTALL_PLATFORM=native
+fi
 INSTALL_PLATFORM_ARGS=
 export COMPOSE_FILE="$WORKSPACE_DIR/docker-compose.yml"
 case "$INSTALL_PLATFORM" in
@@ -57,6 +66,7 @@ OTALON_SERVICES='tls-proxy postgres influxdb3 otalon-capture otalon-capture-pcap
 ```
 
 - Keep this selection for every build/start/recreate. A new terminal needs step 3 again. Desktop does **not** need host networking for capture or migrations; Windows captures the physical NIC.
+- On WSL, `COMPOSE_FILE` must include **both** `docker-compose.yml` and `docker-compose.wsl.yml`. Making `CAPTURE_SOURCE` match a WSL NIC can make native containers healthy, but does not enable the Windows receiver. Do not drop the overlay to work around Desktop errors; native mode also changes published-port and raw-capture security boundaries.
 - Optional LLM: first configure a real container-reachable LiteLLM-compatible `/v1` endpoint, scoped key and exact served chat/jobs aliases. A gateway does not supply provider access. Then set `INSTALL_AI_ARGS=` and append `otalon-ai` to `OTALON_SERVICES`. Excluding it does not stop an already running AI container.
 
 ## 4. Prepare local configuration
@@ -187,6 +197,17 @@ docker compose --env-file .env.compose --profile all ps
 ```
 
 - Expect selected services healthy (12 core / 13 with LLM). Healthy processes do not prove data, learned artifacts or detector coverage. Desktop refuses ARP/PROFINET raw-L2 discovery; routed protocol scans still require explicit authorization.
+- On Desktop, verify the actual container commands and network before exporting or capturing:
+
+```sh
+if [ "$INSTALL_PLATFORM" = desktop ]; then
+  docker inspect --format \
+    '{{.Name}} command={{json .Config.Cmd}} entrypoint={{json .Config.Entrypoint}} network={{.HostConfig.NetworkMode}} cap_add={{json .HostConfig.CapAdd}}' \
+    otalon-capture otalon-scan
+fi
+```
+
+- Expect `desktop_ingest.main` for capture, `python -m uvicorn otalon_scan.api.server:app ...` for scan, a Compose bridge network (not `host`) and no added capabilities. A restarting scan process that exits with code 0 is not fixed by changing the capture NIC. Stop, check the source/overlay and rebuild/recreate from the correct branch; do not disable healthchecks or add privileges.
 
 ## 12. Browser login
 
@@ -195,26 +216,61 @@ docker compose --env-file .env.compose --profile all ps
 
 ## 13. Desktop: start continuous capture on Windows
 
-**Candidate path; genuine Windows/Npcap acceptance remains required. No manual upload loop.**
+**Candidate path; complete Windows/Npcap/data acceptance remains required. No manual upload loop.**
 
-In WSL, after TLS startup, export only the collector, public certificate and source credential:
+Before exporting credentials, prepare the destination in **Windows PowerShell**. For a new single-user local test directory, the following removes inherited access and grants the current account access. Existing directories may have explicit grants or reparse points: inspect them and follow your organization's ACL policy rather than treating this example as a universal repair. Do not recursively reset existing spool/data permissions.
+
+```powershell
+if (-not (Test-Path -LiteralPath 'C:\OTALON')) {
+    New-Item -ItemType Directory -Path 'C:\OTALON' | Out-Null
+}
+$account = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+icacls 'C:\OTALON' /inheritance:r /grant:r "${account}:(OI)(CI)F"
+if ($LASTEXITCODE -ne 0) { throw 'Export directory ACL setup failed' }
+icacls 'C:\OTALON'
+```
+
+In **Ubuntu Bash**, after TLS startup, export only the collector, public certificate and source credential:
 
 ```sh
 sudo python3 scripts/install/prepare_wsl.py --workspace "$WORKSPACE_DIR" \
   --receiver-uid 10006 --export /mnt/c/OTALON
 ```
 
-- Never copy the suite env file or DB/operator keys to Windows. Restrict `C:\OTALON` to the intended account using your organization's Windows ACL policy; WSL mode bits are not proof of NTFS confidentiality.
+- Never copy the suite env file or DB/operator keys to Windows. WSL mode bits are not proof of NTFS confidentiality. Back in **Windows PowerShell**, inspect `icacls 'C:\OTALON\source.key'`; stop if unintended accounts can read it. Existing differing key/certificate exports refuse: investigate without deleting them.
+- Export rebuilds `collector.zip` from the checkout and preserves existing `collector.sample.json` and matching key/certificate files. After a collector source update, stop the old collector cleanly and repeat this export before using the new version; pulling/building alone does not update the Windows ZIP. Keep the old spool for reconciliation.
 - In **Windows PowerShell**, verify native Python and list approved Npcap interfaces:
 
 ```powershell
 py -3 --version
+if ($LASTEXITCODE -ne 0) { throw 'Native Windows Python is required' }
 & 'C:\Program Files\Wireshark\dumpcap.exe' -D
 if ($LASTEXITCODE -ne 0) { throw 'Npcap interface listing failed' }
 notepad C:\OTALON\collector.sample.json
 ```
 
-- Replace `interface` with the exact `\Device\NPF_...` device from the listing, not a numeric Linux/WSL adapter. Verify physical Ethernet and the authorized feed. Keep URL `https://localhost:9493`, certificate verification and the source-key file.
+- Replace `interface` with the exact `\Device\NPF_...` device from the listing, not a numeric Linux/WSL adapter. **JSON requires every backslash to be doubled.** The following is an example field only; replace the GUID with your authorized device:
+
+```json
+"interface": "\\Device\\NPF_{01234567-0123-0123-0123-012345678901}"
+```
+
+- The parsed value has single backslashes, matching dumpcap's device name. Pasting unescaped `\Device\NPF_...` into JSON produces `JSONDecodeError: Invalid \escape` before capture starts. Verify physical Ethernet and the authorized feed. Keep URL `https://localhost:9493`, certificate verification and the source-key file.
+- Validate JSON and probe the **protected receiver route**, not just `/health`, before starting capture. This GET deliberately sends no key and creates/uploads nothing:
+
+```powershell
+py -3 -m json.tool C:\OTALON\collector.sample.json | Out-Null
+if ($LASTEXITCODE -ne 0) { throw 'Collector JSON invalid; check escaped backslashes' }
+$status = curl.exe --cacert C:\OTALON\otalon.crt --silent --show-error `
+    --max-time 10 --output NUL --write-out '%{http_code}' `
+    'https://localhost:9493/ingest/v1/runs/otalon-readonly-probe/chunks/0'
+if ($LASTEXITCODE -ne 0) { throw 'Receiver TLS/connection failed' }
+if ($status -ne '401') { throw "Expected protected receiver HTTP 401, got $status; stop before capture" }
+Get-Process dumpcap -ErrorAction SilentlyContinue
+```
+
+- `401` is expected without a source key; it proves the protected route exists, not that the collector's credential works. `404` here means the expected route is absent: verify step 3/11 and the Desktop proxy/receiver. A native recorder can return `/health` 200 while lacking all `/ingest/v1` routes. Do not bypass certificate checks or print keys to diagnose this.
+- If dumpcap is already running, identify its owner and cleanly stop your previous collector before starting another. Do not terminate unrelated Wireshark captures.
 - Start in PowerShell; elevate only if Npcap policy requires it:
 
 ```powershell
@@ -222,6 +278,7 @@ py -3 C:\OTALON\collector.zip --config C:\OTALON\collector.sample.json
 ```
 
 - Keep it running. Closed chunks are sent automatically; receiver outages retain backlog and retry. Ctrl+C requests a clean stop. Next start reconciles the prior process/files and resumes retained work. A malformed final file, unknown owner or storage exhaustion fails closed; do not delete evidence.
+- `Receiver unavailable` is a general handoff failure, not proof of a DB outage; first repeat the TLS/route/platform checks. An `os.fsync` / `Bad file descriptor` traceback indicates a faulty/old collector build: update to the corrected source and re-export the ZIP. Never remove `fsync`, ignore its failure or delete `spool`, `collector.sqlite3` or `owner.json` to make startup pass.
 - Collector limits default to 2 GB pending spool / 1 GB free reserve; receiver custody and recovery have bounded retained storage. These are safeguards, **not** indefinite-retention/zero-loss guarantees. Reaching a limit needs operator attention; do not claim automatic capacity recovery.
 - File closure does not seal a logical metric window. Quiet/final tails wait for later packets; original timestamps are retained. Collector receipt, Influx visibility and per-module recovery completion are separate facts.
 
@@ -230,7 +287,9 @@ py -3 C:\OTALON\collector.zip --config C:\OTALON\collector.sample.json
 - Desktop: without uploading files, inspect **Timeseries Data → Connections**, MAC/protocol measurements and **Alarms** at the original capture timestamps. Check real row growth, enabled profiles and persisted recovery outcomes. Missing artifacts/context must remain explicit, never fake coverage.
 - Native: use authorized live traffic; manual **PCAP Import & Replay** remains optional diagnostics, not continuous Desktop acceptance. Manual history import does not automatically trigger historical recovery.
 - Test missing/wrong credentials, receiver and DB outages, automatic catch-up, adjacent flows and genuine Windows capture. Record errors with timestamps; redact keys.
-- On this acceptance installation only, recreate and repeat login/data/history checks **without re-uploading**:
+- **Recorded limited smoke test (2026-11-13):** WSL2 Ubuntu 26.04.1, Docker Desktop, native Windows Python 3.15.2 and physical Npcap Ethernet. After correcting scanner startup and Windows file synchronization, 12 Desktop core services were healthy; the collector reconciled retained files, handed off 49 chunks / 6,645 packets and stopped cleanly with no pending Windows files. Matching credentials and existing DB volumes were preserved; NTFS access and verified TLS were checked. The build used caches. This is not full step-14 acceptance: at the recorded snapshot only 3 chunks were consumed and 2 of 3 processing batches committed, with 717 point-visibility checks in the pending batch. Complete processing, browser/detector coverage, outage recovery and a recreate after this captured data remain unverified.
+- A receiver receipt means durable custody, **not** completed Influx publication or per-module recovery. If capture custody grows while processing does not, record the timestamps and separate stage counters and investigate; do not infer completion from healthy containers, an empty Windows spool or one visible measurement. A large pending visibility check may take time, but that is not proof it will complete.
+- On this acceptance installation only, return to the **Ubuntu Bash** shell in your checkout before recreating. If this is a new shell, enter the actual checkout path and repeat step 3 to restore `WORKSPACE_DIR` and the same platform and AI selection first. Recreate and repeat login/data/history checks **without re-uploading**:
 
 ```sh
 docker compose --env-file .env.compose --profile all up -d --force-recreate --wait ${OTALON_SERVICES:?Repeat step 3} &&
@@ -238,4 +297,4 @@ docker compose --env-file .env.compose --profile all ps
 ```
 
 - Initial ML artifacts are not bundled; training needs real telemetry/labels/reference data. Never disable detection to make startup green. Test LLM loops separately only when selected.
-- Updates require build + recreate of affected services/consumers. Preserve passwords, checkpoints, raw custody and volumes. Detailed helper contracts: `scripts/install/README.md`.
+- Updates require build + recreate of affected services/consumers with the same platform selection, plus a fresh Windows collector export if its source changed. Review `OTALON_BUILD_REF` against the checked-out revision; setup preserves an already configured reference. Preserve passwords, checkpoints, raw custody and volumes. Detailed helper contracts: `scripts/install/README.md`.

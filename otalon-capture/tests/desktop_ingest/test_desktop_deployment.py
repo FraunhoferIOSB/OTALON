@@ -46,6 +46,10 @@ def test_desktop_overlay_removes_host_network_and_privileges(tmp_path):
         assert not services[name].get("cap_add")
         assert "ALL" in services[name]["cap_drop"]
     assert "desktop_ingest.main" in services["otalon-capture"]["command"]
+    assert services["otalon-scan"]["command"] == [
+        "python", "-m", "uvicorn", "otalon_scan.api.server:app",
+        "--host", "0.0.0.0", "--port", "8091", "--forwarded-allow-ips", "*",
+    ]
     assert services["otalon-capture"]["environment"]["INFLUX_URL"] == "http://influxdb3:8181"
     assert services["otalon-api"]["environment"]["PCAP_RECORDER_HOST"] == "otalon-capture"
     assert services["otalon-clas"]["environment"]["CONTINUOUS_RECOVERY_ENABLED"] == "true"

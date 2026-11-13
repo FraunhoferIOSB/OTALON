@@ -45,6 +45,9 @@ def test_export_keeps_credentials_and_supplies_runnable_collector(tmp_path):
     with zipfile.ZipFile(destination / "collector.zip") as package:
         assert "__main__.py" in package.namelist()
         assert "windows_collector/collector.py" in package.namelist()
+        assert package.read("windows_collector/collector.py") == (
+            ROOT / "otalon-capture/src/windows_collector/collector.py"
+        ).read_bytes()
         assert "desktop_ingest/pcap.py" in package.namelist()
         assert not any(".env" in name or name.endswith(".key") for name in package.namelist())
 
