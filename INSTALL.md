@@ -119,6 +119,7 @@ sudo stat -c '%u:%g %a %n' shared/influx-admin-token.json
 
 - Expected bootstrap file: `1500:1500 600`. Read denial for ordinary users is intentional. Do not print JSON or loosen permissions.
 - Checks validate local shapes only; they do not contact models, authorize a NIC or establish platform readiness. Mismatched existing bootstrap credentials refuse without rotation.
+- The Desktop overlay uses a 100 ms Influx WAL flush interval for local storage. Writes still wait for durable WAL acknowledgement; this is not `no-sync`. Continuous publication batches all same-destination measurement lines per chunk before exact readback, rather than waiting for a separate WAL flush for each metric window.
 
 ## 7. Build
 
@@ -185,6 +186,7 @@ docker compose --env-file .env.compose --profile core-db exec -T postgres \
 
 - Stored revision for this source: `0015`. Empty `alembic current` output is not proof. Desktop overlay routes migration to bridged `postgres`; no host-networking toggle required.
 - CLAS owns additive continuous progress tables and creates/checks them at startup; existing telemetry is not backfilled or replaced.
+- On first startup with an existing continuous recovery spool, CLAS adds and backfills a small batch-time index in one transaction. Payloads, module outcomes and checkpoints are preserved; later bounded context reads exclude impossible old batches before expanding records. Recovery uses a short active-work delay and a longer idle/error delay, not a fixed one-second pause per module task.
 
 ## 11. Start services
 
@@ -255,7 +257,7 @@ notepad C:\OTALON\collector.sample.json
 "interface": "\\Device\\NPF_{01234567-0123-0123-0123-012345678901}"
 ```
 
-- The parsed value has single backslashes, matching dumpcap's device name. Pasting unescaped `\Device\NPF_...` into JSON produces `JSONDecodeError: Invalid \escape` before capture starts. Verify physical Ethernet and the authorized feed. Keep URL `https://localhost:9493`, certificate verification and the source-key file.
+- The parsed value has single backslashes, matching dumpcap's device name. Pasting unescaped `\Device\NPF_...` into JSON produces `JSONDecodeError: Invalid \escape` before capture starts. Verify physical Ethernet and the authorized feed. Use URL `https://127.0.0.1:9493`, certificate verification and the source-key file. The Desktop receiver publishes IPv4 loopback only; Windows may try `::1` first for `localhost`, adding seconds to every sequential upload/receipt request and causing backlog. The default certificate covers `127.0.0.1`. Export preserves existing JSON: explicitly update an older `localhost` URL after cleanly stopping its collector; do not disable TLS or replace retained spool files.
 - Validate JSON and probe the **protected receiver route**, not just `/health`, before starting capture. This GET deliberately sends no key and creates/uploads nothing:
 
 ```powershell
@@ -263,7 +265,7 @@ py -3 -m json.tool C:\OTALON\collector.sample.json | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Collector JSON invalid; check escaped backslashes' }
 $status = curl.exe --cacert C:\OTALON\otalon.crt --silent --show-error `
     --max-time 10 --output NUL --write-out '%{http_code}' `
-    'https://localhost:9493/ingest/v1/runs/otalon-readonly-probe/chunks/0'
+    'https://127.0.0.1:9493/ingest/v1/runs/otalon-readonly-probe/chunks/0'
 if ($LASTEXITCODE -ne 0) { throw 'Receiver TLS/connection failed' }
 if ($status -ne '401') { throw "Expected protected receiver HTTP 401, got $status; stop before capture" }
 Get-Process dumpcap -ErrorAction SilentlyContinue

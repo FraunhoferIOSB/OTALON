@@ -62,7 +62,7 @@ def prepare(workspace, destination, receiver_uid):
         "dumpcap": r"C:\Program Files\Wireshark\dumpcap.exe",
         "interface": "<SELECT_NPCAP_INTERFACE>",
         "spool": r"C:\OTALON\spool",
-        "url": "https://localhost:9493",
+        "url": "https://127.0.0.1:9493",
         "key_file": r"C:\OTALON\source.key",
         "ca_file": r"C:\OTALON\otalon.crt",
         "chunk_seconds": 2,

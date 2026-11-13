@@ -56,3 +56,4 @@ def test_desktop_overlay_removes_host_network_and_privileges(tmp_path):
     targets = {v["target"] for v in services["otalon-api"]["volumes"]}
     assert not any(v.startswith("/host-storage/") for v in targets)
     assert services["postgres"]["ports"][0]["host_ip"] == "127.0.0.1"
+    assert services["influxdb3"]["environment"]["INFLUXDB3_WAL_FLUSH_INTERVAL"] == "100ms"

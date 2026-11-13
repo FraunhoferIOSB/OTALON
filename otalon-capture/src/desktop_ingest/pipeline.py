@@ -162,10 +162,29 @@ class ContinuousPipeline:
     def publish_pending(self):
         if not self.write_enabled:
             return
+        max_request_bytes = 8_000_000  # Leave headroom below Influx's default 10 MB HTTP body limit.
         for batch in self.ledger.pending_batches():
+            grouped = {}
             for part in batch["payload"]:
                 writer = self.writers[part["writer"]]
-                writer.client.write(record=part["lines"], write_precision=writer.write_precision)
+                destination = (str(writer.config.host), writer.config.database, writer.config.token, writer.write_precision)
+                lines = grouped.setdefault(destination, (writer, []))[1]
+                for line in part["lines"]:
+                    size = len(line.encode("utf-8"))
+                    if size > max_request_bytes:
+                        raise ValueError("Influx line exceeds publication request byte limit")
+                    lines.append((line, size))
+            # Share one WAL-synchronous request across measurements only for identical destinations.
+            for writer, sized_lines in grouped.values():
+                lines, request_bytes = [], 0
+                for line, size in sized_lines:
+                    if lines and request_bytes + 1 + size > max_request_bytes:
+                        writer.client.write(record=lines, write_precision=writer.write_precision)
+                        lines, request_bytes = [], 0
+                    request_bytes += size + bool(lines)
+                    lines.append(line)
+                if lines:
+                    writer.client.write(record=lines, write_precision=writer.write_precision)
             for part in batch["payload"]:
                 self.verify_visible(part)
             self.ledger.commit_batch(batch["id"])

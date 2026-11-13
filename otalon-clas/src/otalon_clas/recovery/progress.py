@@ -30,6 +30,32 @@ CREATE TABLE IF NOT EXISTS outcomes(id TEXT PRIMARY KEY,
     payload TEXT NOT NULL,
     persisted INTEGER DEFAULT 0);
 """)
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            if not self.db.execute("SELECT 1 FROM sqlite_master WHERE name='batch_times' AND type='table'").fetchone():
+                # Table creation and backfill commit together, so a restart never
+                # mistakes an incomplete legacy migration for indexed history.
+                self.db.execute("""CREATE TABLE batch_times(
+                    batch_id INTEGER NOT NULL REFERENCES batches(id),
+                    measurement NOT NULL,
+                    last_time REAL,
+                    PRIMARY KEY(batch_id,measurement))""")
+                self.db.execute("CREATE INDEX batch_times_measurement_time ON batch_times(measurement,last_time,batch_id)")
+                for row in self.db.execute("SELECT id FROM batches ORDER BY id"):
+                    self._index_batch(row[0])
+
+    def _index_batch(self, batch_id):
+        # Use the record filter's SQLite conversion across all parts/records;
+        # volatile clock tokens stay candidates regardless of registration time.
+        self.db.execute("""INSERT INTO batch_times(batch_id,measurement,last_time)
+            SELECT b.id, json_extract(p.value,'$.measurement'),
+                MAX(CASE WHEN lower(substr(json_extract(r.value,'$.time'),1,
+                    length(json_extract(r.value,'$.time')))) IN ('now','subsec','subsecond')
+                    THEN 1e999 ELSE julianday(json_extract(r.value,'$.time')) END)
+            FROM batches AS b, json_each(b.payload,'$.payload') AS p,
+                json_each(p.value,'$.records') AS r
+            WHERE b.id=? AND json_extract(p.value,'$.measurement') IS NOT NULL
+            GROUP BY json_extract(p.value,'$.measurement')""", (batch_id,))
 
     def close(self):
         self.db.close()
@@ -53,6 +79,8 @@ CREATE TABLE IF NOT EXISTS outcomes(id TEXT PRIMARY KEY,
             ):
                 raise ValueError("recovery storage full")
             self.db.execute("INSERT OR IGNORE INTO batches VALUES(?,?,?)", (batch["id"], digest, payload))
+            if not old:
+                self._index_batch(batch["id"])
             for module in modules:
                 self.db.execute("INSERT OR IGNORE INTO work(module,batch_id) VALUES(?,?)", (module, batch["id"]))
 
@@ -69,16 +97,19 @@ CREATE TABLE IF NOT EXISTS outcomes(id TEXT PRIMARY KEY,
         if not 1 <= max_records <= 100000:
             raise ValueError("invalid recovery context limit")
         with self.lock:
-            # JSON1 applies the bound before Python materializes records. Never
-            # deserialize the full retained stream to build one short context.
-            query = """SELECT r.value FROM batches AS b,
-                json_each(b.payload, '$.payload') AS p,
-                json_each(p.value, '$.records') AS r
+            source = "batches AS b"
+            if start_time is not None:
+                # CROSS JOIN keeps indexed candidates ahead of JSON1 expansion.
+                source = "batch_times AS t CROSS JOIN batches AS b"
+            query = f"""SELECT r.value FROM {source}
+                CROSS JOIN json_each(b.payload, '$.payload') AS p
+                CROSS JOIN json_each(p.value, '$.records') AS r
                 WHERE b.id<=? AND json_extract(p.value,'$.measurement')=?"""
             params = [before, measurement]
             if start_time is not None:
-                query += " AND julianday(json_extract(r.value,'$.time'))>=julianday(?)"
-                params.append(start_time)
+                query += """ AND t.batch_id=b.id AND t.measurement=? AND t.last_time>=julianday(?)
+                    AND julianday(json_extract(r.value,'$.time'))>=julianday(?)"""
+                params.extend([measurement, start_time, start_time])
             query += " ORDER BY b.id, p.key, r.key LIMIT ?"
             params.append(max_records + 1)
             rows = self.db.execute(query, params).fetchall()

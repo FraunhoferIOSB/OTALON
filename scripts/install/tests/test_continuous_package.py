@@ -40,7 +40,7 @@ def test_export_keeps_credentials_and_supplies_runnable_collector(tmp_path):
     assert key.read_bytes() == before
     assert (destination / "source.key").read_bytes() == before
     cfg = json.loads((destination / "collector.sample.json").read_text())
-    assert cfg["url"] == "https://localhost:9493"
+    assert cfg["url"] == "https://127.0.0.1:9493"
     assert not any("ADMIN" in name or "POSTGRES" in name for name in cfg)
     with zipfile.ZipFile(destination / "collector.zip") as package:
         assert "__main__.py" in package.namelist()
@@ -50,6 +50,14 @@ def test_export_keeps_credentials_and_supplies_runnable_collector(tmp_path):
         ).read_bytes()
         assert "desktop_ingest/pcap.py" in package.namelist()
         assert not any(".env" in name or name.endswith(".key") for name in package.namelist())
+
+    cfg["interface"] = r"\Device\NPF_{01234567-0123-0123-0123-012345678901}"
+    cfg["url"] = "https://collector.example.test:9493"
+    configured = json.dumps(cfg, indent=2) + "\n"
+    (destination / "collector.sample.json").write_text(configured)
+    assert module.prepare(workspace, destination, None) == 0
+    assert (destination / "collector.sample.json").read_text() == configured
+    assert (destination / "source.key").read_bytes() == before
 
 
 def test_export_refuses_symlink_key_without_modification(tmp_path):

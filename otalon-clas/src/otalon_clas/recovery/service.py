@@ -75,12 +75,13 @@ class CaptureRecovery:
 
         def loop():
             while not self.stop_event.is_set():
+                worked = False
                 try:
-                    self.discover()
-                    self.worker.process_one()
+                    discovered = self.discover()
+                    worked = self.worker.process_one() or bool(discovered)
                 except Exception as exc:
                     logger.error("Continuous discovery/recovery blocked: {}", type(exc).__name__)
-                self.stop_event.wait(1)
+                self.stop_event.wait(0.1 if worked else 1)
 
         self.thread = threading.Thread(target=loop, name="capture-recovery", daemon=True)
         self.thread.start()
