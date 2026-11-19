@@ -204,13 +204,8 @@ class TestProtoAggregator:
         results = agg.flush(force=True)
         assert results[0].protocol == "proto_42"
 
-    def test_second_boundary_grouping(self) -> None:
-        """Verify that records in different seconds produce separate groups.
-
-        With data-driven flush, second 1000 is emitted when the first
-        record from second 2000 arrives via ``add()``.  The final
-        ``flush(force=True)`` emits the remaining second 2000.
-        """
+    def test_original_window_boundary_grouping(self) -> None:
+        """Different original starts stay separate even within the same second."""
         agg = ProtoAggregator(enabled=True, protocol_map=PROTOCOL_MAP)
         all_results: List[ProtoAggregatedRecord] = []
         all_results.extend(agg.add(_raw_record(time=1000, protocols=18)))
@@ -222,8 +217,9 @@ class TestProtoAggregator:
         for r in all_results:
             time_groups.setdefault(r.time, []).append(r)
 
-        assert 1000 in time_groups
-        assert 2000 in time_groups
+        assert set(time_groups) == {1000, 1500, 2000}
+        assert all(len(group) == 1 for group in time_groups.values())
+        assert all(r.proto_total_packets == 10 for r in all_results)
 
     def test_getter_methods(self) -> None:
         agg = ProtoAggregator(enabled=True, protocol_map=PROTOCOL_MAP)

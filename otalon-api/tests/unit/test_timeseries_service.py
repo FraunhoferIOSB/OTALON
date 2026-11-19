@@ -1,17 +1,20 @@
 """Unit tests for TimeseriesService (M-04 and M-05).
 
-Tests _decimate_dataframe() downsampling logic and _round_time_columns()
-timestamp rounding behavior.
+Tests downsampling and exact timestamp preservation through the query services.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from otalon_api.domain.time import time_policy
+from otalon_api.services.source_timeseries_service import SourceTimeseriesService
 from otalon_api.services.timeseries_service import TimeseriesService
 
 
@@ -130,11 +133,36 @@ class TestM04DecimateDataframe:
 
 
 @pytest.mark.unit
-class TestM05RoundTimeColumns:
-    """M-05: Tests for TimeseriesService._round_time_columns()."""
+@pytest.mark.parametrize("source", ["network", "mac", "proto"])
+class TestM05ExactTimeColumns:
+    """Replace the old rounding contract with real service-path preservation."""
 
-    def test_subsecond_timestamps_rounded(self):
-        """M-05: Timestamps with milliseconds are rounded to seconds."""
+    def query(self, df, source, monkeypatch, aggregate=None):
+        monkeypatch.setattr(time_policy, "_LOCAL_TZ_NAME", "UTC")
+        repo = Mock()
+        repo.query_timeseries.return_value = df
+        settings = SimpleNamespace(
+            default_sample_max_points=500, netcap_measurement="network_metrics", netcap_id_tag="uci"
+        )
+        if source == "network":
+            service = TimeseriesService(repo, settings)
+            identity = {"uci": "src/dst/0/6/192.0.2.1/192.0.2.2/32001/80/TCP"}
+        else:
+            service = SourceTimeseriesService(repo, settings, f"{source}_traffic", "id", ["value"])
+            identity = {"series_id": "synthetic"}
+        result, bucket = service.get_between(
+            **identity,
+            start=pd.Timestamp("2025-01-01T12:00:00.123Z"),
+            stop=pd.Timestamp("2025-01-01T12:00:00.987Z"),
+            features=["value"],
+            aggregate=aggregate,
+        )
+        assert repo.query_timeseries.call_args.kwargs["start"] == "2025-01-01T12:00:00.123000Z"
+        assert repo.query_timeseries.call_args.kwargs["stop"] == "2025-01-01T12:00:00.987000Z"
+        assert bucket == df.attrs.get("bucket_seconds")
+        return result
+
+    def test_subsecond_timestamps_preserved(self, source, monkeypatch):
         df = pd.DataFrame(
             {
                 "time": pd.to_datetime(
@@ -148,13 +176,14 @@ class TestM05RoundTimeColumns:
             }
         )
 
-        result = TimeseriesService._round_time_columns(df)
+        result = self.query(df, source, monkeypatch)
 
-        assert result["time"].iloc[0] == pd.Timestamp("2025-01-01T12:00:00Z")
-        assert result["time"].iloc[1] == pd.Timestamp("2025-01-01T12:00:00Z")
-        assert result["time"].iloc[2] == pd.Timestamp("2025-01-01T12:00:01Z")
+        assert list(result["time"].dt.microsecond) == [499000, 500000, 999000]
+        assert result["time"].nunique() == 3
+        assert list(result["value"]) == [1, 2, 3]
+        assert df["time"].dt.tz is not None
 
-    def test_integer_columns_unchanged(self):
+    def test_integer_columns_unchanged(self, source, monkeypatch):
         """M-05: Non-datetime columns are not modified."""
         df = pd.DataFrame(
             {
@@ -164,13 +193,13 @@ class TestM05RoundTimeColumns:
             }
         )
 
-        result = TimeseriesService._round_time_columns(df)
+        result = self.query(df, source, monkeypatch)
 
         assert result["count"].iloc[0] == 42
         assert result["name"].iloc[0] == "test"
 
-    def test_multiple_datetime_columns(self):
-        """M-05: All datetime columns are rounded, not just 'time'."""
+    def test_multiple_datetime_columns(self, source, monkeypatch):
+        """No datetime column is accidentally rounded."""
         df = pd.DataFrame(
             {
                 "time": pd.to_datetime(["2025-01-01T12:00:00.600Z"]),
@@ -179,12 +208,12 @@ class TestM05RoundTimeColumns:
             }
         )
 
-        result = TimeseriesService._round_time_columns(df)
+        result = self.query(df, source, monkeypatch)
 
-        assert result["time"].iloc[0] == pd.Timestamp("2025-01-01T12:00:01Z")
-        assert result["created_at"].iloc[0] == pd.Timestamp("2025-01-01T13:30:01Z")
+        assert result["time"].iloc[0] == pd.Timestamp("2025-01-01T12:00:00.600")
+        assert result["created_at"].iloc[0] == pd.Timestamp("2025-01-01T13:30:00.700Z")
 
-    def test_empty_dataframe(self):
+    def test_empty_dataframe(self, source, monkeypatch):
         """M-05: Empty DataFrame with datetime columns handles gracefully."""
         df = pd.DataFrame(
             {
@@ -193,35 +222,33 @@ class TestM05RoundTimeColumns:
             }
         )
 
-        result = TimeseriesService._round_time_columns(df)
+        result = self.query(df, source, monkeypatch)
 
         assert len(result) == 0
         assert "time" in result.columns
 
-    def test_already_rounded_unchanged(self):
+    def test_date_bin_buckets_unchanged(self, source, monkeypatch):
         """M-05: Already second-precision timestamps remain unchanged."""
         ts = pd.to_datetime(["2025-01-01T12:00:00Z", "2025-01-01T12:00:01Z"])
         df = pd.DataFrame({"time": ts, "value": [1, 2]})
+        df.attrs["bucket_seconds"] = 1
 
-        result = TimeseriesService._round_time_columns(df)
+        result = self.query(df, source, monkeypatch, aggregate="mean")
 
-        pd.testing.assert_series_equal(result["time"], df["time"])
+        pd.testing.assert_series_equal(result["time"], df["time"].dt.tz_localize(None))
 
-    def test_datetime_index_rounded(self):
-        """M-05: DatetimeIndex is also rounded to seconds."""
+    def test_datetime_index_preserved(self, source, monkeypatch):
+        """DatetimeIndex retains fractional distinctions too."""
         idx = pd.to_datetime(["2025-01-01T12:00:00.600Z", "2025-01-01T12:00:01.400Z"])
         df = pd.DataFrame({"value": [1, 2]}, index=idx)
 
-        result = TimeseriesService._round_time_columns(df)
+        result = self.query(df, source, monkeypatch)
 
-        assert result.index[0] == pd.Timestamp("2025-01-01T12:00:01Z")
-        assert result.index[1] == pd.Timestamp("2025-01-01T12:00:01Z")
+        assert result.index[0] == pd.Timestamp("2025-01-01T12:00:00.600")
+        assert result.index[1] == pd.Timestamp("2025-01-01T12:00:01.400")
 
-    def test_non_dataframe_returns_as_is(self):
-        """M-05: Non-DataFrame input is returned unchanged."""
-        result = TimeseriesService._round_time_columns(None)
-
-        assert result is None
+    def test_non_dataframe_returns_as_is(self, source):
+        assert TimeseriesService._decimate_dataframe(None, 10) is None
 
 
 class _StubInfluxRepo:

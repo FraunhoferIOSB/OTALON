@@ -142,6 +142,14 @@ class TestCutoffFollowsRecordTime:
 
         assert aggregator._current_second_bucket() == 1_600_000_005_000
 
+    def test_fractional_window_cutoff_never_rewinds(self) -> None:
+        aggregator = _aggregator(wall_clock_s=1_780_000_000.0)
+        aggregator.add(_record(4_123))
+        aggregator.add(_record(4_187))
+        aggregator.add(_record(4_150))
+        assert aggregator._current_second_bucket() == 4_187
+        assert set(aggregator.buckets) == {4_187}
+
     def test_disabled_aggregator_passes_records_through(self) -> None:
         aggregator = SparsePortAggregator(enabled=False)
         value = _record(1_600_000_000_000)

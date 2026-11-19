@@ -6,6 +6,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+
 def _uci_to_parts(uci: str) -> List[str]:
     """Split a UCI string into exactly nine components, padding missing parts."""
 
@@ -14,26 +15,29 @@ def _uci_to_parts(uci: str) -> List[str]:
         parts = parts + [""] * (9 - len(parts))
     return parts[:9]
 
+
 def _safe_num(x: Any, default: float = 0.0) -> float:
     """Return ``value`` converted to ``float`` or ``default`` on failure."""
-    
+
     try:
         return float(x)
     except Exception:
         return default
 
+
 def _safe_int(x: Any, default: int = 0) -> int:
     """Return ``value`` converted to ``int`` or ``default`` on failure."""
-    
+
     try:
         return int(x)
     except Exception:
         return default
 
+
 @dataclass
 class AggregatedNetcapRecord:
     """Aggregated representation of a Netcap record emitted after bucketing."""
-    
+
     time: int
     uci: str
     packet_count: int
@@ -117,7 +121,7 @@ class AggregatedNetcapRecord:
 @dataclass
 class AggregationBucket:
     """Collect metrics for multiple Netcap records sharing the same UCI base."""
-    
+
     src_ports: Set[str] = field(default_factory=set)
     dst_ports: Set[str] = field(default_factory=set)
     total_packet_count: int = 0
@@ -132,10 +136,10 @@ class AggregationBucket:
     max_iat: Optional[float] = None
     sum_std_iat: float = 0.0
     std_iat_count: int = 0
-    
+
     def add(self, v: Dict) -> None:
         """Update aggregation statistics with a raw Netcap ``record``."""
-        
+
         uci_str = v.get("uci", "unknown")
         p = _uci_to_parts(uci_str)
         self.src_ports.add(p[6])
@@ -146,12 +150,12 @@ class AggregationBucket:
         min_ps = _safe_int(v.get("min_packet_size", 0))
         max_ps = _safe_int(v.get("max_packet_size", 0))
         std_ps = _safe_num(v.get("std_packet_size", 0.0))
-        
+
         mit = _safe_num(v.get("mean_interarrival_time", 0.0))
         min_iat = _safe_num(v.get("min_interarrival_time", 0.0))
         max_iat = _safe_num(v.get("max_interarrival_time", 0.0))
         std_iat = _safe_num(v.get("std_interarrival_time", 0.0))
-        
+
         self.total_packet_count += pc
         self.total_volume += vol
         self.min_packet_size = min(min_ps, self.min_packet_size) if self.min_packet_size is not None else min_ps
@@ -168,19 +172,20 @@ class AggregationBucket:
 
     def build(self, sec_ts: int, uci_base: Tuple[str, str, str, str, str, str, str]) -> AggregatedNetcapRecord:
         """Create an :class:`AggregatedNetcapRecord` from the accumulated values."""
-        
+
         src_port_final = next(iter(self.src_ports)) if len(self.src_ports) == 1 else "*"
         dst_port_final = next(iter(self.dst_ports)) if len(self.dst_ports) == 1 else "*"
 
         collapsed_port_count = None
         if len(self.src_ports) > 1 or len(self.dst_ports) > 1:
-            collapsed_port_count = (
-                (len(self.src_ports) if len(self.src_ports) > 1 else 0)
-                + (len(self.dst_ports) if len(self.dst_ports) > 1 else 0)
+            collapsed_port_count = (len(self.src_ports) if len(self.src_ports) > 1 else 0) + (
+                len(self.dst_ports) if len(self.dst_ports) > 1 else 0
             )
 
         src_mac, dst_mac, vlan, ip_proto, src_ip, dst_ip, protocols = uci_base
-        uci_final = "/".join([src_mac, dst_mac, vlan, ip_proto, src_ip, dst_ip, src_port_final, dst_port_final, protocols])
+        uci_final = "/".join(
+            [src_mac, dst_mac, vlan, ip_proto, src_ip, dst_ip, src_port_final, dst_port_final, protocols]
+        )
 
         total_pc = int(self.total_packet_count)
         total_vol = int(self.total_volume)
@@ -208,8 +213,12 @@ class AggregationBucket:
 
 
 class SparsePortAggregator:
-    """Aggregate sparse port metrics into coarser buckets before writing."""
-    
+    """Collapse ports only within an original native window, labeled by its start.
+
+    Keys retain native epoch milliseconds, not global per-second buckets. Each
+    independent capture owns its aggregator; independent files are not pooled.
+    """
+
     def __init__(self, enabled: bool, emit_interval_ms: int = 1000) -> None:
         self.enabled = enabled
         self.emit_interval_ms = int(emit_interval_ms)
@@ -235,7 +244,7 @@ class SparsePortAggregator:
             return [value]
 
         rs_ms = value.get("time", 0)
-        sec_ts = int(rs_ms // 1000 * 1000)
+        sec_ts = int(rs_ms)  # Historical variable name; now the exact native window start.
         # Track the data's own clock; it, not the wall clock, decides which
         # buckets can no longer receive records (audit CAP-05).
         if self._latest_record_ms is None or sec_ts > self._latest_record_ms:
@@ -281,9 +290,7 @@ class SparsePortAggregator:
         flushed: List[AggregatedNetcapRecord] = []
         for second_bucket in sorted(self.buckets.keys()):
             second_map = self.buckets.pop(second_bucket, {})
-            flushed.extend(
-                bucket.build(second_bucket, base_key) for base_key, bucket in second_map.items()
-            )
+            flushed.extend(bucket.build(second_bucket, base_key) for base_key, bucket in second_map.items())
         return flushed
 
     def _flush_expired_buckets(self, cutoff_ms: int) -> List[AggregatedNetcapRecord]:
@@ -291,9 +298,7 @@ class SparsePortAggregator:
         expired = sorted(second for second in self.buckets if second < cutoff_ms)
         for second_bucket in expired:
             second_map = self.buckets.pop(second_bucket, {})
-            flushed.extend(
-                bucket.build(second_bucket, base_key) for base_key, bucket in second_map.items()
-            )
+            flushed.extend(bucket.build(second_bucket, base_key) for base_key, bucket in second_map.items())
         return flushed
 
     def _current_second_bucket(self) -> int:
@@ -301,8 +306,9 @@ class SparsePortAggregator:
 
         Derived from the newest RECORD timestamp, so it tracks the data
         being processed rather than the host clock. Records arrive in
-        non-decreasing second order per capture, so every bucket strictly
-        older than the newest one is complete.
+        non-decreasing window-start order per capture, so every bucket strictly
+        older than the newest one is complete. The historical method name does
+        not imply second alignment.
 
         Falls back to the wall clock only before the first record, when
         there is no data-side clock yet (and no buckets to flush either).

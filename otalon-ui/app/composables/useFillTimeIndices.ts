@@ -12,8 +12,8 @@ import { parseApiTimestamp } from '~/utils/format'
  * Fill gaps in a timeseries array so that every expected bucket is present.
  *
  * Produces a regular time grid from the first to the last data point,
- * spaced `bucketSeconds` apart. Existing data points are preserved at
- * their matching grid positions; missing positions receive a skeleton
+ * spaced `bucketSeconds` apart. All original points, including duplicates
+ * and off-grid points, remain in order; missing positions receive a skeleton
  * entry with the `time` field set and all other fields set to `null`.
  *
  * @param data - The sparse timeseries data array. Each item must have a `time` field with an ISO 8601 string.
@@ -26,68 +26,39 @@ export function fillTimeIndices<T extends Record<string, unknown>>(
   bucketSeconds: number,
   timeField: string = 'time',
 ): T[] {
-  if (data.length === 0 || bucketSeconds <= 0) {
-    return []
-  }
-
-  if (data.length === 1) {
+  const intervalMs = bucketSeconds * 1000
+  if (data.length < 2 || !Number.isFinite(intervalMs) || intervalMs < 1) {
     return [...data]
   }
 
-  const firstTime = parseApiTimestamp(data[0][timeField] as string).getTime()
-  const lastTime = parseApiTimestamp(data[data.length - 1][timeField] as string).getTime()
-  const intervalMs = bucketSeconds * 1000
-
-  const dataMap = new Map<number, T>()
-  for (const item of data) {
-    const ts = parseApiTimestamp(item[timeField] as string).getTime()
-    dataMap.set(ts, item)
+  // The length guard guarantees endpoints; map preserves the paired arrays'
+  // length, and the index guards below keep every access in range.
+  const times = data.map(item => parseApiTimestamp(item[timeField] as string).getTime())
+  if (times.some((time, index) => !Number.isFinite(time) || (index > 0 && time < times[index - 1]!))) {
+    return [...data]
   }
+  const firstTime = times[0]!
+  const lastTime = times[times.length - 1]!
 
   const result: T[] = []
-  let currentTime = firstTime
-
-  while (currentTime <= lastTime + intervalMs / 2) {
-    const existing = dataMap.get(currentTime)
-    if (existing) {
-      result.push(existing)
-    } else {
-      const closestKey = findClosestKey(dataMap, currentTime, intervalMs / 2)
-      if (closestKey !== null) {
-        result.push(dataMap.get(closestKey)!)
-        dataMap.delete(closestKey)
-      } else {
-        const skeleton = buildSkeleton<T>(data[0], timeField, new Date(currentTime).toISOString())
-        result.push(skeleton)
-      }
+  let index = 0
+  for (let currentTime = firstTime + intervalMs; currentTime < lastTime; currentTime += intervalMs) {
+    while (index < data.length && times[index]! <= currentTime) {
+      result.push(data[index++]!)
     }
-    currentTime += intervalMs
+    // A nearby original point occupies the grid position without being sampled
+    // away. Only empty tolerance windows receive a null, never trailing gaps.
+    const previousDistance = index > 0 ? currentTime - times[index - 1]! : Infinity
+    const nextDistance = index < data.length ? times[index]! - currentTime : Infinity
+    if (Math.min(previousDistance, nextDistance) > intervalMs / 2) {
+      result.push(buildSkeleton<T>(data[0]!, timeField, new Date(currentTime).toISOString()))
+    }
+  }
+  while (index < data.length) {
+    result.push(data[index++]!)
   }
 
   return result
-}
-
-/**
- * Find the closest key in a map within a tolerance window.
- *
- * @param map - Map of timestamp keys to data items.
- * @param target - The target timestamp to find the closest match for.
- * @param tolerance - Maximum allowed deviation in milliseconds.
- * @returns The closest key within tolerance, or null if none found.
- */
-function findClosestKey<T>(map: Map<number, T>, target: number, tolerance: number): number | null {
-  let bestKey: number | null = null
-  let bestDiff = Infinity
-
-  for (const key of map.keys()) {
-    const diff = Math.abs(key - target)
-    if (diff < bestDiff && diff <= tolerance) {
-      bestDiff = diff
-      bestKey = key
-    }
-  }
-
-  return bestKey
 }
 
 /**

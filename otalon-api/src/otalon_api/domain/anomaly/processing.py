@@ -397,7 +397,7 @@ def _nan_to_none(value: Any) -> float | int | None:
 
 
 def _format_timestamp(ts: Any) -> str:
-    """Format a timestamp to a naive ISO-8601 string without timezone suffix.
+    """Format an exact timestamp to a naive ISO-8601 string without timezone suffix.
 
     After ``normalize_time_for_ui()`` the timestamps are naive local
     wall-clock time.  No ``Z`` suffix is appended so the frontend does
@@ -407,14 +407,16 @@ def _format_timestamp(ts: Any) -> str:
         ts: A datetime-like value.
 
     Returns:
-        Naive ISO-8601 string (e.g. ``2024-01-15T14:30:00``).
+        Naive ISO-8601 string retaining fractions (e.g. ``2024-01-15T14:30:00.100000``).
     """
     if ts is None:
         return ""
     try:
         t = pd.Timestamp(ts)
+        if pd.isna(t):
+            return str(ts)
         if t.tz is not None:
             t = t.tz_localize(None)
-        return t.strftime("%Y-%m-%dT%H:%M:%S")
+        return t.isoformat()
     except Exception:
         return str(ts)

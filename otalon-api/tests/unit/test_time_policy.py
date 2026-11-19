@@ -174,6 +174,12 @@ class TestUiToInfluxQueryRange:
         assert start_str == "2026-01-15T09:00:00Z"
         assert stop_str == "2026-01-15T11:00:00Z"
 
+    def test_fractional_range_is_not_truncated(self) -> None:
+        assert time_policy.ui_to_influx_query_range("2026-01-15T10:00:00.123456", "2026-01-15T10:00:00.187654") == (
+            "2026-01-15T09:00:00.123456Z",
+            "2026-01-15T09:00:00.187654Z",
+        )
+
 
 @pytest.mark.unit
 class TestUiToPgQueryRange:

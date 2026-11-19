@@ -107,7 +107,7 @@ def _sanitize_value(value: Any) -> Any:
     Returns:
         The original value or ``None`` if it is not JSON-serializable.
     """
-    if value is None:
+    if value is None or value is pd.NaT:
         return None
     if isinstance(value, float) and (np.isnan(value) or np.isinf(value)):
         return None
@@ -139,7 +139,7 @@ def _df_to_records(df: pd.DataFrame) -> list[dict[str, Any]]:
 
     result = df.copy()
     if "time" in result.columns:
-        result["time"] = pd.to_datetime(result["time"], errors="coerce").dt.strftime("%Y-%m-%dT%H:%M:%S")
+        result["time"] = pd.to_datetime(result["time"], errors="coerce")
 
     records = result.to_dict(orient="records")
     return [{str(k): _sanitize_value(v) for k, v in row.items()} for row in records]

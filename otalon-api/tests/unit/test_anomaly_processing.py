@@ -208,6 +208,71 @@ class TestParseUci:
         assert set(result.keys()) == expected_keys
 
 
+@pytest.mark.unit
+class TestPrepareTimeseriesWithBoundsTimestamps:
+    """Exercise the chart consumer, not just its timestamp helper."""
+
+    @pytest.mark.parametrize("zone", [None, "+02:00"])
+    def test_close_starts_preserve_precision_and_wall_clock(self, zone) -> None:
+        times = pd.DatetimeIndex(["2026-01-01T00:00:00.100", "2026-01-01T00:00:00.300"], tz=zone)
+        df = pd.DataFrame({"time": times, "packet_count": [1, 2]})
+        before = df.copy(deep=True)
+        bounds = [{"lower_bounds": {"packet_count": 1}, "upper_bounds": {"packet_count": 1}}]
+
+        rows = prepare_timeseries_with_bounds(df, bounds, "packet_count")
+
+        assert [row["time"] for row in rows] == [
+            "2026-01-01T00:00:00.100000",
+            "2026-01-01T00:00:00.300000",
+        ]
+        assert [row["value"] for row in rows] == [1, 2]
+        assert [row["value_min"] for row in rows] == [1, 2]
+        assert [row["value_max"] for row in rows] == [1, 2]
+        assert [row["lower_bound"] for row in rows] == [1, 1]
+        assert [row["upper_bound"] for row in rows] == [1, 1]
+        assert [row["violation_low"] for row in rows] == [False, False]
+        assert [row["violation_high"] for row in rows] == [False, True]
+        pd.testing.assert_frame_equal(df, before)
+
+    @pytest.mark.parametrize(
+        ("missing_time", "expected_time"),
+        [(None, ""), (pd.NaT, "NaT"), (np.nan, "nan"), (pd.NA, "<NA>"), ("invalid", "invalid")],
+    )
+    def test_nulls_and_errors_do_not_erase_adjacent_exact_times(self, missing_time, expected_time) -> None:
+        df = pd.DataFrame(
+            {
+                "time": pd.Series(
+                    [
+                        pd.Timestamp("2026-01-01T00:00:00.100"),
+                        missing_time,
+                        pd.Timestamp("2026-01-01T00:00:00.300"),
+                    ],
+                    dtype=object,
+                ),
+                "packet_count": [1, np.nan, 2],
+            }
+        )
+
+        rows = prepare_timeseries_with_bounds(df, [], "packet_count")
+
+        assert [row["time"] for row in rows] == [
+            "2026-01-01T00:00:00.100000",
+            expected_time,
+            "2026-01-01T00:00:00.300000",
+        ]
+        assert [row["value"] for row in rows] == [1, None, 2]
+        assert rows[1] == {
+            "time": expected_time,
+            "value": None,
+            "value_min": None,
+            "value_max": None,
+            "lower_bound": None,
+            "upper_bound": None,
+            "violation_low": False,
+            "violation_high": False,
+        }
+
+
 class TestPrepareTimeseriesWithBoundsNan:
     """Tests for NaN handling in prepare_timeseries_with_bounds."""
 

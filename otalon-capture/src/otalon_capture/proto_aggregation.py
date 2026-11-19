@@ -1,6 +1,6 @@
 """Streaming protocol aggregation for Netcap++ records.
 
-Aggregates raw network traffic per (second, protocol) into 18 features
+Aggregates raw network traffic per (original window start, protocol) into 18 features
 (3 Volume + 5 PacketSize + 4 IAT + 3 Topology + 3 Behavior) plus meta-column
 ``protocol``.  The logic mirrors the offline Polars pipeline in
 ``create_proto_aggregated_features.py`` but operates incrementally.
@@ -124,7 +124,7 @@ class ProtoAggregatedRecord:
 
 @dataclass
 class ProtoBucket:
-    """Accumulator for one protocol in one second.
+    """Accumulator for one protocol in one native window.
 
     Mirrors the Polars ``aggregate_protocol_features`` logic with incremental
     updates.
@@ -187,7 +187,7 @@ class ProtoBucket:
         """Finalize bucket into a :class:`ProtoAggregatedRecord`.
 
         Args:
-            sec_ts: Second-aligned timestamp in milliseconds.
+            sec_ts: Exact original window-start timestamp in milliseconds.
             protocol_name: Resolved protocol string name.
 
         Returns:
@@ -254,8 +254,9 @@ def _safe_stdev(values: List[int]) -> float:
 class ProtoAggregator:
     """Streaming aggregator for protocol-level traffic features.
 
-    Uses **data-driven flush**: a second bucket ``S`` is only emitted when
-    the first record with a *later* second ``S+1`` arrives.  This avoids
+    Uses **data-driven flush**: an original-window bucket is emitted when
+    the first record with a later window start arrives. Start labels retain
+    native epoch milliseconds; independent capture pipelines are not pooled. This avoids
     premature flushes caused by wall-clock drift or queue latency in
     threaded pipelines.
 
@@ -277,9 +278,9 @@ class ProtoAggregator:
     def add(self, value: Dict[str, Any]) -> List[ProtoAggregatedRecord]:
         """Ingest a raw Netcap record and return flushed aggregates if due.
 
-        Flush is **data-driven**: all second-buckets strictly older than the
-        current record's second are emitted.  This guarantees that no bucket
-        is flushed while records for that second are still arriving.
+        Flush is **data-driven**: buckets strictly older than the current
+        original window start are emitted. Records within a capture must
+        arrive in non-decreasing window-start order.
 
         Args:
             value: Raw dict with keys ``time``, ``uci``, ``packet_count``, etc.
@@ -291,7 +292,7 @@ class ProtoAggregator:
             return []
 
         rs_ms = value.get("time", 0)
-        sec_ts = int(rs_ms // 1000 * 1000)
+        sec_ts = int(rs_ms)
 
         uci_str = value.get("uci", "unknown")
         parts = _uci_to_parts(uci_str)
@@ -317,7 +318,7 @@ class ProtoAggregator:
 
         When ``force`` is ``False``, this is a no-op because flushing is
         entirely data-driven inside :meth:`add`.  The worker thread calls
-        ``flush()`` during idle periods; without new data no second
+        ``flush()`` during idle periods; without new data no window
         boundaries can be determined, so nothing is emitted.
 
         Args:
@@ -339,17 +340,13 @@ class ProtoAggregator:
         return self.protocol_map.get(proto_key, f"proto_{proto_key}")
 
     def _flush_older_seconds(self, current_sec_ts: int) -> List[ProtoAggregatedRecord]:
-        """Flush all second-buckets strictly older than ``current_sec_ts``.
-
-        This is the data-driven flush: when a record from second ``S``
-        arrives, all buckets for seconds ``< S`` are guaranteed complete
-        and can be safely emitted.
+        """Flush original-window buckets strictly older than ``current_sec_ts``.
 
         Args:
-            current_sec_ts: Second-aligned timestamp of the current record (ms).
+            current_sec_ts: Exact native window-start timestamp (ms).
 
         Returns:
-            List of finalized records from expired seconds.
+            List of finalized records from completed native windows.
         """
         flushed: List[ProtoAggregatedRecord] = []
         expired = sorted(s for s in self.buckets if s < current_sec_ts)
@@ -362,7 +359,7 @@ class ProtoAggregator:
         return flushed
 
     def _flush_all(self) -> List[ProtoAggregatedRecord]:
-        """Flush every second bucket regardless of time."""
+        """Flush every native-window bucket regardless of time."""
         flushed: List[ProtoAggregatedRecord] = []
         for second_bucket in sorted(self.buckets.keys()):
             proto_map = self.buckets.pop(second_bucket, {})

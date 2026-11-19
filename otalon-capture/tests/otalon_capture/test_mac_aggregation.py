@@ -211,13 +211,8 @@ class TestMacAggregator:
         agg = MacAggregator(enabled=False)
         assert agg.flush(force=True) == []
 
-    def test_second_boundary_grouping(self) -> None:
-        """Verify that records in different seconds produce separate groups.
-
-        With data-driven flush, second 1000 is emitted when the first
-        record from second 2000 arrives via ``add()``.  The final
-        ``flush(force=True)`` emits the remaining second 2000.
-        """
+    def test_original_window_boundary_grouping(self) -> None:
+        """Different original starts stay separate even within the same second."""
         agg = MacAggregator(enabled=True, protocol_map=PROTOCOL_MAP)
         all_results: List[MacAggregatedRecord] = []
         all_results.extend(agg.add(_raw_record(time=1000, uci="AA:BB/CC:DD//IPv4/10.0.0.1/10.0.0.2/80/1024/TCP")))
@@ -229,15 +224,15 @@ class TestMacAggregator:
         for r in all_results:
             time_groups.setdefault(r.time, []).append(r)
 
-        assert 1000 in time_groups
-        assert 2000 in time_groups
+        assert set(time_groups) == {1000, 1500, 2000}
+        assert all(len(group) == 2 for group in time_groups.values())
+        assert all(r.out_total_packets + r.in_total_packets == 10 for r in all_results)
 
 
 def _load_sample_raw() -> List[Dict[str, Any]]:
     """Load sample_raw.csv and convert to list of raw record dicts.
 
-    Timestamps are truncated to second boundaries (milliseconds) to match
-    the second-aligned bucketing used by the aggregators.
+    Timestamps retain the fixture's original window starts in milliseconds.
     """
     records = []
     with open(SAMPLE_RAW_PATH, newline="", encoding="utf-8") as f:

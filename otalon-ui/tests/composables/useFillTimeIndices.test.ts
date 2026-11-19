@@ -96,16 +96,16 @@ describe('fillTimeIndices', () => {
     expect(result[2].value).toBe(200)
   })
 
-  it('returns empty for zero bucket seconds', () => {
+  it('preserves input for zero bucket seconds', () => {
     const data = [makePoint(0, 100), makePoint(10, 110)]
     const result = fillTimeIndices(data, 0)
-    expect(result).toEqual([])
+    expect(result).toEqual(data)
   })
 
-  it('returns empty for negative bucket seconds', () => {
+  it('preserves input for negative bucket seconds', () => {
     const data = [makePoint(0, 100), makePoint(10, 110)]
     const result = fillTimeIndices(data, -10)
-    expect(result).toEqual([])
+    expect(result).toEqual(data)
   })
 
   it('skeleton entries have time field set correctly', () => {
@@ -131,5 +131,58 @@ describe('fillTimeIndices', () => {
     const result = fillTimeIndices(data, 10, 'timestamp')
     expect(result).toHaveLength(3)
     expect(result[1].value).toBeNull()
+  })
+
+  it('preserves close fractional, off-grid and duplicate points in order', () => {
+    const data = [makePoint(0.123, 1), makePoint(0.187, 2), makePoint(0.187, 3), makePoint(1.123, 4)]
+    const original = structuredClone(data)
+    const result = fillTimeIndices(data, 1)
+    expect(result).toEqual(data)
+    result.forEach((point, index) => expect(point).toBe(data[index]))
+    expect(data).toEqual(original)
+  })
+
+  it('keeps the first-anchored grid and inserts only unoccupied gaps', () => {
+    const data = [makePoint(0.123, 1), makePoint(0.187, 2), makePoint(3.187, 3)]
+    const result = fillTimeIndices(data, 1)
+    expect(result.map(point => point.value)).toEqual([1, 2, null, null, 3])
+    expect(result[2].time).toBe(makePoint(1.123, 0).time)
+    expect(result[3].time).toBe(makePoint(2.123, 0).time)
+  })
+
+  it('does not repeat an off-grid point at an adjacent grid position', () => {
+    const data = [makePoint(0, 1), makePoint(0.5, 2), makePoint(1.5, 3), makePoint(2, 4)]
+    const result = fillTimeIndices(data, 1)
+    expect(result).toEqual(data)
+  })
+
+  it.each([NaN, Infinity, Number.MIN_VALUE])('preserves points for unusable interval %s', (interval) => {
+    const data = [makePoint(0, 1), makePoint(1, 2)]
+    expect(fillTimeIndices(data, interval)).toEqual(data)
+  })
+
+  it('preserves inputs without filling when a timestamp is invalid', () => {
+    const data = [makePoint(0, 1), { ...makePoint(1, 2), time: 'invalid' }]
+    expect(fillTimeIndices(data, 1)).toEqual(data)
+  })
+
+  it('preserves unsorted fractional inputs without filling or reordering', () => {
+    const data = [makePoint(1.187, 1), makePoint(0.123, 2), makePoint(0.123, 3)]
+    const original = structuredClone(data)
+    const result = fillTimeIndices(data, 1)
+    expect(result).not.toBe(data)
+    expect(result).toEqual(original)
+    result.forEach((point, index) => expect(point).toBe(data[index]))
+    expect(data).toEqual(original)
+  })
+
+  it('preserves every point for a positive submillisecond interval', () => {
+    const data = [makePoint(0.123, 1), makePoint(0.123, 2), makePoint(0.187, 3)]
+    const original = structuredClone(data)
+    const result = fillTimeIndices(data, 0.0005)
+    expect(result).not.toBe(data)
+    expect(result).toEqual(original)
+    result.forEach((point, index) => expect(point).toBe(data[index]))
+    expect(data).toEqual(original)
   })
 })

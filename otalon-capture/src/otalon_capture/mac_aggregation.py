@@ -1,6 +1,6 @@
 """Streaming MAC-address aggregation for Netcap++ records.
 
-Aggregates raw network traffic per (second, MAC address) into 26 features
+Aggregates raw network traffic per (original window start, MAC address) into 26 features
 (11 outbound + 11 inbound + 4 ratio) plus meta-columns ``mac_address`` and
 ``dominant_protocol``.  The logic mirrors the offline Polars pipeline in
 ``create_mac_aggregated_features.py`` but operates incrementally on individual
@@ -180,7 +180,7 @@ class MacAggregatedRecord:
 
 @dataclass
 class DirectionalMacBucket:
-    """Accumulator for one direction (in or out) of a MAC per second.
+    """Accumulator for one direction (in or out) of a MAC per native window.
 
     Mirrors the Polars ``_build_directional_agg`` logic with incremental
     updates.
@@ -262,7 +262,7 @@ class DirectionalMacBucket:
 
 @dataclass
 class MacSecondBucket:
-    """Holds outbound and inbound buckets plus protocol tracking for one MAC in one second."""
+    """Holds directional buckets and protocol tracking for one MAC in one native window."""
 
     out_bucket: DirectionalMacBucket = field(default_factory=DirectionalMacBucket)
     in_bucket: DirectionalMacBucket = field(default_factory=DirectionalMacBucket)
@@ -291,8 +291,9 @@ class MacSecondBucket:
 class MacAggregator:
     """Streaming aggregator for MAC-level traffic features.
 
-    Uses **data-driven flush**: a second bucket ``S`` is only emitted when
-    the first record with a *later* second ``S+1`` arrives.  This avoids
+    Uses **data-driven flush**: an original-window bucket is emitted when
+    the first record with a later window start arrives. Start labels retain
+    native epoch milliseconds; independent capture pipelines are not pooled. This avoids
     premature flushes caused by wall-clock drift or queue latency in
     threaded pipelines.
 
@@ -314,9 +315,9 @@ class MacAggregator:
     def add(self, value: Dict[str, Any]) -> List[MacAggregatedRecord]:
         """Ingest a raw Netcap record and return flushed aggregates if due.
 
-        Flush is **data-driven**: all second-buckets strictly older than the
-        current record's second are emitted.  This guarantees that no bucket
-        is flushed while records for that second are still arriving.
+        Flush is **data-driven**: buckets strictly older than the current
+        original window start are emitted. Records within a capture must
+        arrive in non-decreasing window-start order.
 
         Args:
             value: Raw dict with keys ``time``, ``uci``, ``packet_count``, etc.
@@ -328,7 +329,7 @@ class MacAggregator:
             return []
 
         rs_ms = value.get("time", 0)
-        sec_ts = int(rs_ms // 1000 * 1000)
+        sec_ts = int(rs_ms)
 
         uci_str = value.get("uci", "unknown")
         parts = _uci_to_parts(uci_str)
@@ -346,7 +347,7 @@ class MacAggregator:
 
         When ``force`` is ``False``, this is a no-op because flushing is
         entirely data-driven inside :meth:`add`.  The worker thread calls
-        ``flush()`` during idle periods; without new data no second
+        ``flush()`` during idle periods; without new data no window
         boundaries can be determined, so nothing is emitted.
 
         Args:
@@ -442,17 +443,13 @@ class MacAggregator:
         )
 
     def _flush_older_seconds(self, current_sec_ts: int) -> List[MacAggregatedRecord]:
-        """Flush all second-buckets strictly older than ``current_sec_ts``.
-
-        This is the data-driven flush: when a record from second ``S``
-        arrives, all buckets for seconds ``< S`` are guaranteed complete
-        and can be safely emitted.
+        """Flush original-window buckets strictly older than ``current_sec_ts``.
 
         Args:
-            current_sec_ts: Second-aligned timestamp of the current record (ms).
+            current_sec_ts: Exact native window-start timestamp (ms).
 
         Returns:
-            List of finalized records from expired seconds.
+            List of finalized records from completed native windows.
         """
         flushed: List[MacAggregatedRecord] = []
         expired = sorted(s for s in self.buckets if s < current_sec_ts)
@@ -462,7 +459,7 @@ class MacAggregator:
         return flushed
 
     def _flush_all(self) -> List[MacAggregatedRecord]:
-        """Flush every second bucket regardless of time."""
+        """Flush every native-window bucket regardless of time."""
         flushed: List[MacAggregatedRecord] = []
         for second_bucket in sorted(self.buckets.keys()):
             mac_map = self.buckets.pop(second_bucket, {})

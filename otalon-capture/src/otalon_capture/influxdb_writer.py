@@ -5,7 +5,7 @@ from __future__ import annotations
 import random
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from collections.abc import Mapping
 from typing import Any, Iterable, List
 
@@ -30,12 +30,13 @@ def _map_precision(precision: Any) -> WritePrecision:
         precision_value = str(precision or "").strip().lower()
     except Exception:  # noqa: BLE001 - defensive conversion guard
         precision_value = "ms"
+    if precision_value == "s":
+        raise ValueError("write precision 's' cannot preserve native millisecond window timestamps; use ms, us or ns")
     mapping = {
         "ns": WritePrecision.NS,
         "us": WritePrecision.US,
         "µs": WritePrecision.US,
         "ms": WritePrecision.MS,
-        "s": WritePrecision.S,
     }
     return mapping.get(precision_value, WritePrecision.MS)
 
@@ -192,8 +193,10 @@ class InfluxDBWriter:
         it as success (audit QUA-10).
 
         Mirrors the mapping handling in ``pipeline.py:97-101``: the
-        accessor wins when present, then the mapping key, and finally the
+        accessor wins when present, then the mapping key, and then the
         key with any ``get_`` prefix stripped (``get_time`` → ``time``).
+        Native producer aliases are tried only when both mapping keys are
+        absent; explicit values, including ``None``, retain precedence.
         """
         attribute = getattr(value, attribute_name, None)
         if attribute is not None:
@@ -202,7 +205,18 @@ class InfluxDBWriter:
             if attribute_name in value:
                 return value[attribute_name]
             bare_name = attribute_name[4:] if attribute_name.startswith("get_") else attribute_name
-            return value.get(bare_name)
+            if bare_name in value:
+                return value[bare_name]
+            aliases = {
+                "get_total_packet_count": "packet_count",
+                "get_sd_packet_size": "std_packet_size",
+                "get_mean_packet_inter_arrival_time": "mean_interarrival_time",
+                "get_min_packet_inter_arrival_time": "min_interarrival_time",
+                "get_max_packet_inter_arrival_time": "max_interarrival_time",
+                "get_sd_packet_inter_arrival_time": "std_interarrival_time",
+            }
+            alias = aliases.get(attribute_name)
+            return value.get(alias) if alias is not None else None
         return None
 
     def _maybe_flush_locked(self) -> None:
@@ -240,8 +254,10 @@ class InfluxDBWriter:
         self._next_flush_deadline_ms = self._compute_next_deadline()
 
     def _compute_point_timestamp(self, start_ms: int) -> datetime:
-        end_ms = max(0, int(start_ms) + self.window_interval_ms - 1)
-        return datetime.fromtimestamp(end_ms // 1000, tz=timezone.utc).replace(microsecond=0)
+        """Label points by the real native window start, independently of line units."""
+        if self.write_precision == WritePrecision.S:
+            raise ValueError("second write precision cannot preserve native millisecond window timestamps")
+        return datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(milliseconds=int(start_ms))
 
     def _compute_next_deadline(self) -> int:
         jitter = 0

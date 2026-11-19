@@ -100,7 +100,6 @@ class SourceTimeseriesService:
         bucket_seconds: int | None = df.attrs.get("bucket_seconds")
 
         df = cast(pd.DataFrame, time_policy.normalize_time_for_ui(df, time_cols=["time"]))
-        df = self._round_time_columns(df)
         df = self._decimate_dataframe(df, effective_max)
 
         logger.debug("get_between result: {} rows, bucket={}s", len(df), bucket_seconds)
@@ -168,27 +167,6 @@ class SourceTimeseriesService:
             sample_max_points=sample_max_points,
             preserve_extrema=preserve_extrema,
         )
-
-    @staticmethod
-    def _round_time_columns(df: pd.DataFrame) -> pd.DataFrame:
-        """Round all datetime columns to second precision.
-
-        Args:
-            df: Input DataFrame.
-
-        Returns:
-            DataFrame with datetime columns rounded to whole seconds.
-        """
-        if not isinstance(df, pd.DataFrame) or df.empty:
-            return df
-
-        result = df.copy()
-        for col in result.columns:
-            if pd.api.types.is_datetime64_any_dtype(result[col]):
-                result[col] = result[col].dt.round("s")
-        if isinstance(result.index, pd.DatetimeIndex):
-            result.index = result.index.round("s")
-        return result
 
     @staticmethod
     def _decimate_dataframe(df: pd.DataFrame, target_points: Optional[int]) -> pd.DataFrame:

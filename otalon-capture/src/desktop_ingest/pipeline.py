@@ -29,6 +29,16 @@ class ContinuousPipeline:
         self.ledger = ledger
         self.write_enabled = write_enabled
         self.fingerprint = hashlib.sha256(settings.model_dump_json().encode()).hexdigest()
+        state = ledger.load_checkpoint()
+        if state:
+            # Legacy Python carry already lost window identity, and old outbox
+            # payloads use end/second labels. Neither can be silently upgraded.
+            if state.get("version") != 2 or state.get("timestamp_contract") != "native-window-start-ms-v1":
+                raise ValueError(
+                    "checkpoint timestamp contract mismatch; legacy carry requires explicit reconciliation"
+                )
+            if state["config"] != self.fingerprint:
+                raise ValueError("checkpoint configuration mismatch")
         self.native = NetworkCaptureSession(settings.interval_ms, 200000, 64_000_000)
         self.sparse = SparsePortAggregator(settings.preprocess.aggregate_sparse_ports, 2**60)
         # Continuous cutoff, not a wall-clock throttle, owns publication.
@@ -63,10 +73,7 @@ class ContinuousPipeline:
                     "collapsed_port_count",
                 }
                 self.writers[k] = writer
-        state = ledger.load_checkpoint()
         if state:
-            if state["version"] != 1 or state["config"] != self.fingerprint:
-                raise ValueError("checkpoint configuration mismatch")
             self.native.restore_state(decode(state["native"]))
             for k, agg in [("sparse", self.sparse), ("mac", self.mac), ("proto", self.proto)]:
                 agg.buckets = decode(state[k])
@@ -74,7 +81,8 @@ class ContinuousPipeline:
 
     def checkpoint(self):
         return {
-            "version": 1,
+            "version": 2,
+            "timestamp_contract": "native-window-start-ms-v1",
             "config": self.fingerprint,
             "native": encode(self.native.export_state()),
             "sparse": encode(self.sparse.buckets),
@@ -89,7 +97,7 @@ class ContinuousPipeline:
             values["network"] += self.sparse.add(record)
             values["mac"] += self.mac.add(record)
             values["proto"] += self.proto.add(record)
-        cutoff = window["record_start_ms"] // 1000 * 1000
+        cutoff = int(window["record_start_ms"])
         if self.sparse.enabled:
             values["network"] += self.sparse._flush_expired_buckets(cutoff)
         payload = []
@@ -167,7 +175,12 @@ class ContinuousPipeline:
             grouped = {}
             for part in batch["payload"]:
                 writer = self.writers[part["writer"]]
-                destination = (str(writer.config.host), writer.config.database, writer.config.token, writer.write_precision)
+                destination = (
+                    str(writer.config.host),
+                    writer.config.database,
+                    writer.config.token,
+                    writer.write_precision,
+                )
                 lines = grouped.setdefault(destination, (writer, []))[1]
                 for line in part["lines"]:
                     size = len(line.encode("utf-8"))

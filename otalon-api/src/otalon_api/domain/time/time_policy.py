@@ -184,9 +184,13 @@ def ui_to_influx_query_range(
         compat_z_suffix: Retained for backward compatibility (ignored).
 
     Returns:
-        A ``(start_str, stop_str)`` tuple of Z-suffixed UTC time strings.
+        A ``(start_str, stop_str)`` tuple of exact Z-suffixed UTC time strings,
+        retaining fractions on the raw Influx query path.
     """
-    return to_utc_z_string(start_local), to_utc_z_string(stop_local)
+    return (
+        _ensure_utc(_to_timestamp(start_local)).isoformat().replace("+00:00", "Z"),
+        _ensure_utc(_to_timestamp(stop_local)).isoformat().replace("+00:00", "Z"),
+    )
 
 
 def normalize_time_for_ui(
