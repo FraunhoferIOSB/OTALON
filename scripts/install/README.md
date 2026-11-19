@@ -1,6 +1,6 @@
 # Local Installer Utilities
 
-Dependency-free Python 3.10+ helpers for Linux and WSL checkouts. These commands prepare local files only; they do not build images, authorize interfaces or verify external models. Continuous Desktop code is a release candidate until the genuine Windows/Npcap and final fresh-image gates pass.
+Dependency-free Python 3.10+ helpers for Linux and WSL checkouts. Follow [INSTALL.md](../../INSTALL.md) for native Linux or [INSTALL-WSL.md](../../INSTALL-WSL.md) for Windows/WSL. These commands prepare local files only; they do not build images, authorize interfaces or verify external models. Continuous Desktop code is a release candidate until the genuine Windows/Npcap and final fresh-image gates pass.
 
 ```sh
 python3 scripts/install/setup.py --workspace "$PWD"
@@ -24,7 +24,7 @@ python3 scripts/install/check.py --workspace "$PWD" --without-ai
 ```
 
 - `--without-ai` preserves all external values exactly and exempts only gateway URL/key/chat/jobs aliases from readiness checks. Full env grammar, local DB/service keys, DSNs, registries and workspace/reference validation remain enforced; `--syntax-only` is not a replacement for this mode.
-- The flag prepares/checks local files only; it does not stop services. Use the non-AI service selection in INSTALL to exclude `otalon-ai` when starting/recreating. Core capture and detection remain enabled; LLM chat/classification/jobs are unavailable. Already running AI containers are not stopped automatically.
+- The flag prepares/checks local files only; it does not stop services. Use the non-AI service selection in the matching installation guide to exclude `otalon-ai` when starting/recreating. Core capture and detection remain enabled; LLM chat/classification/jobs are unavailable. Already running AI containers are not stopped automatically.
 
 ## Continuous Desktop preparation
 
@@ -38,7 +38,7 @@ sudo python3 scripts/install/prepare_wsl.py --workspace "$PWD" --receiver-uid 10
 - `--desktop` exempts unused Linux interface fields only; all env grammar, DB and service-key checks remain. It does not validate Windows capture.
 - `prepare_wsl.py` source-only mode precedes receiver startup; export requires its public TLS certificate. It never rotates an existing source key or exports suite/DB/operator credentials. Existing differing key/certificate exports refuse. `collector.zip` is rebuilt from current source; `collector.sample.json` is preserved for operator edits.
 - Windows package uses stdlib only, native `dumpcap`, an exact Npcap device and verified HTTPS. The Windows directory needs reviewed NTFS ACLs; Linux mode bits on `/mnt/c` are not security proof.
-- `init_continuous_volume.py --root <mounted-volume> --uid <service-uid>` runs in a one-off container; it initializes only an empty root and preserves a matching populated root. Wrong populated metadata refuses without recursive repair. Use exactly the Compose volume mounts from INSTALL.
+- `init_continuous_volume.py --root <mounted-volume> --uid <service-uid>` runs in a one-off container; it initializes only an empty root and preserves a matching populated root. Wrong populated metadata refuses without recursive repair. Use exactly the Compose volume mounts from INSTALL-WSL.md.
 - Collector receipt means durable custody, not detection completion. Retained-storage caps stop/refuse when full, preserving evidence; no indefinite-retention or zero-loss claim. Final Windows/fresh-image/browser/recovery gates remain open.
 
 Tests use disposable files only. Stdlib unittest covers legacy helpers; pytest is required for continuous package/volume tests. Set INSTALL_TEST_ROOT to an absolute disposable directory to keep fixtures outside the checkout. No application/database fixtures are imported.

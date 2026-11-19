@@ -24,8 +24,10 @@ monitor.
 
 Deployment requires Docker Compose, PostgreSQL, InfluxDB 3 Core, and an
 operator-provided LiteLLM-compatible endpoint and model aliases for AI features.
-Capture and active scanning also require a prepared Linux host and explicit
-network-interface/capability decisions. UI development uses Node 22.22.3 or newer
+Native capture and active scanning require a prepared Linux host and explicit
+network-interface/capability decisions. Windows physical-NIC capture uses the
+native Npcap collector with processing in WSL2/Docker Desktop (test candidate).
+UI development uses Node 22.22.3 or newer
 in the Node 22 line and npm 11.6.2 (`npm install --global npm@11.6.2`); the
 Docker builder installs that pinned npm resolver. A fresh checkout uses
 `npm install`, then `npm run test:run`, `npm run build`, and `npm run typecheck`
@@ -38,7 +40,8 @@ retained scanner SQL/migration cases. The capture CSV fixture is constructed
 regression data, not production telemetry or proof of production equivalence.
 UI `typecheck` enforces a 149-error ratchet; the raw checker is not clean.
 
-- Prepared-host deployment: [INSTALL.md](INSTALL.md)
+- Native Linux installation: [INSTALL.md](INSTALL.md)
+- Windows / WSL2 continuous capture: [INSTALL-WSL.md](INSTALL-WSL.md)
 - Contributor contract: [AGENTS.md](AGENTS.md)
 - MCP usage and endpoint references: [otalon-mcp/docs/](otalon-mcp/docs/)
 
