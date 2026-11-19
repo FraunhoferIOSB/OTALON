@@ -11,13 +11,13 @@
 ## 1. Clone
 
 ```sh
-git clone --single-branch --branch wip/suite069-continuous \
+git clone --single-branch --branch wsl-compatible \
   https://github.com/FraunhoferIOSB/OTALON.git /home/user/otalon
 cd /home/user/otalon
 export WORKSPACE_DIR="$PWD"
 ```
 
-- This candidate installation targets `wip/suite069-continuous`; confirm with `git branch --show-current`. HTTPS does not require a GitHub SSH key. An SSH `Permission denied (publickey)` is an authentication failure, not an installation failure; use HTTPS rather than creating a second checkout.
+- This candidate installation targets `wsl-compatible`; confirm with `git branch --show-current`. HTTPS does not require a GitHub SSH key. An SSH `Permission denied (publickey)` is an authentication failure, not an installation failure; use HTTPS rather than creating a second checkout.
 - Existing checkout: skip clone; enter its actual path and use `git pull --ff-only`. Do not reset local changes or recopy the env sample. Linux paths are case-sensitive: `/home/user/OTALON` and `/home/user/otalon` are different paths. Use your actual path in every later `cd`.
 
 ## 2. Join the shared group
