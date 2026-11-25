@@ -96,12 +96,7 @@ export interface PcapImportConflict {
 
 /** Discriminated rejection surfaced to the page. */
 export type PcapImportRejectionKind =
-  | 'unsupported'
-  | 'too-large'
-  | 'conflict'
-  | 'unauthorized'
-  | 'malformed'
-  | 'unknown'
+  'unsupported' | 'too-large' | 'conflict' | 'unauthorized' | 'malformed' | 'unknown'
 
 /**
  * Normalised upload rejection. `message` is always the server's own wording
@@ -237,13 +232,27 @@ export function toRejection(error: unknown): PcapImportRejection {
 export interface UploadCaptureOptions {
   /** Bypass the server-side overlap check (the "trotzdem importieren" path). */
   force?: boolean
+  /** Transport cancellation; abort alone does not prove server nonacceptance. */
+  signal?: AbortSignal
+  /** Measured request transfer bytes, not file processing or completion. */
+  onUploadProgress?: (progress: UploadCaptureProgress) => void
 }
+
+/** Nullable transfer measurements supplied by the C2 transport. */
+export interface UploadCaptureProgress {
+  loaded: number | null
+  total: number | null
+}
+
+/** Persisted states that must be reconciled before local dispatch. */
+export type PcapImportActiveState = 'queued' | 'running' | 'cancelling'
 
 /** Return type of {@link usePcapImport}. */
 export interface UsePcapImportReturn {
   uploadCapture: (file: File, options?: UploadCaptureOptions) => Promise<PcapImportAccepted>
   fetchStatus: (displayId: string) => Promise<PcapImportStatus>
   fetchRecent: (limit?: number) => Promise<PcapImportStatus[]>
+  fetchByState: (state: PcapImportActiveState, limit?: number) => Promise<PcapImportList>
   cancelImport: (displayId: string) => Promise<PcapImportStatus>
 }
 
@@ -270,7 +279,11 @@ export function usePcapImport(): UsePcapImportReturn {
       form.append('force', 'true')
     }
     // No explicit Content-Type: the browser must set the multipart boundary.
-    return await $fetch<PcapImportAccepted>(BASE_URL, { method: 'POST', body: form })
+    return await $fetch<PcapImportAccepted>(BASE_URL, {
+      method: 'POST',
+      body: form,
+      ...(options?.signal ? { signal: options.signal } : {}),
+    })
   }
 
   /**
@@ -294,6 +307,11 @@ export function usePcapImport(): UsePcapImportReturn {
     return response.items ?? []
   }
 
+  /** Read a bounded, producer-filtered domain, retaining its returned-count envelope. */
+  async function fetchByState(state: PcapImportActiveState, limit = 200): Promise<PcapImportList> {
+    return await $fetch<PcapImportList>(BASE_URL, { query: { limit, state } })
+  }
+
   /**
    * Ask the backend to stop a queued or running import.
    *
@@ -304,5 +322,5 @@ export function usePcapImport(): UsePcapImportReturn {
     return await $fetch<PcapImportStatus>(`${BASE_URL}/${encodeURIComponent(displayId)}/cancel`, { method: 'POST' })
   }
 
-  return { uploadCapture, fetchStatus, fetchRecent, cancelImport }
+  return { uploadCapture, fetchStatus, fetchRecent, fetchByState, cancelImport }
 }

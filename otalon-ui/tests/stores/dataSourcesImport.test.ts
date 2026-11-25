@@ -109,9 +109,17 @@ function rejectUploadWith(error: unknown): Responder {
 
 describe('uploadCapture — happy path', () => {
   beforeEach(() => {
+    let accepted = false
     responder = (url, options) => {
-      if (options.method === 'POST') return ACCEPTED
-      if (url.endsWith('/pcap-import')) return { items: [statusEnvelope()], total: 1 }
+      if (options.method === 'POST') {
+        accepted = true
+        return ACCEPTED
+      }
+      if (url.endsWith('/pcap-import')) {
+        const state = (options.query as { state?: string } | undefined)?.state
+        const items = accepted && (!state || state === 'running') ? [statusEnvelope()] : []
+        return { items, total: items.length }
+      }
       return statusEnvelope()
     }
   })
@@ -147,7 +155,9 @@ describe('uploadCapture — happy path', () => {
   it('does not send force unless asked', async () => {
     const store = useDataSourcesStore()
     await store.uploadCapture(makeFile())
-    const form = calls[0]?.options.body as FormData
+    const uploads = calls.filter((call) => call.options.method === 'POST')
+    expect(uploads).toHaveLength(1)
+    const form = uploads[0]?.options.body as FormData
     expect(form.get('force')).toBeNull()
   })
 })

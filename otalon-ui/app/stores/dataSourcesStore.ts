@@ -8,6 +8,7 @@
  * markers until their owning backend tickets ship.
  */
 import { defineStore } from 'pinia'
+import { markRaw } from 'vue'
 
 import { useApi } from '~/composables/useApi'
 import {
@@ -15,8 +16,10 @@ import {
   toRejection,
   usePcapImport,
   type PcapImportAccepted,
+  type PcapImportActiveState,
   type PcapImportRejection,
   type PcapImportStatus,
+  type PcapImportState,
 } from '~/composables/usePcapImport'
 import type {
   CaptureStatus,
@@ -42,6 +45,85 @@ export const DATA_SOURCE_LABELS: Record<string, string> = {
  */
 export type SourceId = 'conn' | 'mac' | 'proto'
 
+/** Browser-local transfer state, separate from the persisted JobState. */
+export type ImportUploadState = 'pending' | 'uploading' | 'accepted' | 'conflict' | 'failed' | 'cancelled' | 'uncertain'
+
+/** One selection or exact-ID recovered owner; File bytes live only in this application. */
+export interface ImportQueueItem {
+  localId: number
+  sequence: number
+  file: File | null
+  name: string
+  sizeBytes: number | null
+  lastModified: number | null
+  uploadState: ImportUploadState
+  uploadLoaded: number | null
+  uploadTotal: number | null
+  accepted: PcapImportAccepted | null
+  /** Only a transport-observed identity, never inferred from history metadata. */
+  observedDisplayId: string | null
+  status: PcapImportStatus | null
+  rejection: PcapImportRejection | null
+  cancelError: string | null
+  pollError: string | null
+  cancellationRequested: boolean
+  forceConfirmed: boolean
+  forceSequence: number | null
+}
+
+const IMPORT_ACTIVE_STATES: readonly PcapImportActiveState[] = ['queued', 'running', 'cancelling']
+const IMPORT_RECONCILIATION_MARKER = 'Cancellation needs reconciliation; worker settlement is unverified.'
+
+function importIsTerminal(state: PcapImportState): boolean {
+  return PCAP_IMPORT_TERMINAL_STATES.includes(state)
+}
+
+function importIdentity(row: ImportQueueItem): string | undefined {
+  return row.accepted?.display_id ?? row.observedDisplayId ?? row.status?.display_id
+}
+
+function importBlocked(row: ImportQueueItem): boolean {
+  return (
+    row.status?.state === 'cancelling' &&
+    (row.status.error === IMPORT_RECONCILIATION_MARKER || row.status.latest_event === IMPORT_RECONCILIATION_MARKER)
+  )
+}
+
+function importOwnsBarrier(row: ImportQueueItem): boolean {
+  if (row.uploadState === 'uploading' || row.uploadState === 'uncertain') return true
+  const state = row.status?.state ?? row.accepted?.state
+  return !!state && (!importIsTerminal(state) || !row.status)
+}
+
+function validImportStatus(value: unknown): value is PcapImportStatus {
+  if (!value || typeof value !== 'object') return false
+  const job = value as PcapImportStatus
+  return (
+    typeof job.display_id === 'string' &&
+    job.display_id.length > 0 &&
+    Number.isInteger(job.job_id) &&
+    [...IMPORT_ACTIVE_STATES, ...PCAP_IMPORT_TERMINAL_STATES].includes(job.state)
+  )
+}
+
+interface ImportQueueRuntime {
+  active: boolean
+  generation: number
+  reconciled: boolean
+  pump: Promise<void> | null
+  refresh: Promise<void> | null
+  timer: ReturnType<typeof setTimeout> | null
+  uploads: Map<number, AbortController>
+  polls: Map<string, Promise<void>>
+  cancels: Map<string, Promise<void>>
+  due: Map<string, number>
+  failures: Map<string, number>
+  waiters: Map<number, (accepted: boolean) => void>
+}
+
+// Runtime handles are neither persisted Pinia data nor a second ownership lane.
+const importRuntimes = new WeakMap<object, ImportQueueRuntime>()
+
 /**
  * Reactive state shape for the Data Sources store.
  */
@@ -58,15 +140,12 @@ export interface DataSourcesState {
   captureError: string | null
   passiveError: string | null
   seederError: string | null
-  /** Capture currently being uploaded, or the one a conflict is pending on. */
-  importFile: File | null
-  isUploading: boolean
-  /** Acceptance envelope of the most recent successful upload. */
-  importAccepted: PcapImportAccepted | null
-  /** Live status of the job being followed, refreshed by polling. */
-  importStatus: PcapImportStatus | null
-  /** Normalised rejection of the last upload attempt, or null. */
-  importRejection: PcapImportRejection | null
+  importQueue: ImportQueueItem[]
+  importSequence: number
+  importForceSequence: number
+  importSelectedId: number | null
+  importQueueError: string | null
+  importAuthStopped: boolean
   recentImports: PcapImportStatus[]
   isLoadingRecent: boolean
   recentError: string | null
@@ -139,11 +218,12 @@ export const useDataSourcesStore = defineStore('dataSources', {
     captureError: null,
     passiveError: null,
     seederError: null,
-    importFile: null,
-    isUploading: false,
-    importAccepted: null,
-    importStatus: null,
-    importRejection: null,
+    importQueue: [],
+    importSequence: 0,
+    importForceSequence: 0,
+    importSelectedId: null,
+    importQueueError: null,
+    importAuthStopped: false,
     recentImports: [],
     isLoadingRecent: false,
     recentError: null,
@@ -151,6 +231,25 @@ export const useDataSourcesStore = defineStore('dataSources', {
   }),
 
   getters: {
+    /** Compatibility focus is an identity projection, never independent state. */
+    selectedImport(): ImportQueueItem | null {
+      return this.importQueue.find((row) => row.localId === this.importSelectedId) ?? null
+    },
+    importFile(): File | null {
+      return this.selectedImport?.file ?? null
+    },
+    importAccepted(): PcapImportAccepted | null {
+      return this.selectedImport?.accepted ?? null
+    },
+    importStatus(): PcapImportStatus | null {
+      return this.selectedImport?.status ?? null
+    },
+    importRejection(): PcapImportRejection | null {
+      return this.selectedImport?.rejection ?? null
+    },
+    isUploading(): boolean {
+      return this.importQueue.some((row) => row.uploadState === 'pending' || row.uploadState === 'uploading')
+    },
     /**
      * Source rows in display order.
      */
@@ -239,9 +338,7 @@ export const useDataSourcesStore = defineStore('dataSources', {
      * True while an import job is being followed and has not settled.
      */
     isImportRunning(): boolean {
-      const state = this.importStatus?.state ?? this.importAccepted?.state
-      if (!state) return false
-      return !PCAP_IMPORT_TERMINAL_STATES.includes(state)
+      return this.importQueue.some(importOwnsBarrier)
     },
 
     /**
@@ -356,15 +453,24 @@ export const useDataSourcesStore = defineStore('dataSources', {
      * Fetch the newest import jobs for "Recent Imports".
      */
     async fetchRecentImports(): Promise<void> {
+      const runtime = this._importRuntime()
+      if (this.importAuthStopped) return
+      const generation = runtime.generation
       this.isLoadingRecent = true
       this.recentError = null
       try {
-        this.recentImports = await usePcapImport().fetchRecent()
+        const items = await usePcapImport().fetchRecent()
+        if (generation !== runtime.generation) return
+        this.recentImports = items
       } catch (error: unknown) {
+        if (generation !== runtime.generation) return
+        this._stopImportOnAuth(error)
         this.recentError = `Failed to load recent imports: ${extractErrorMessage(error)}`
       } finally {
-        this.isLoadingRecent = false
-        this.recentLoaded = true
+        if (generation === runtime.generation) {
+          this.isLoadingRecent = false
+          this.recentLoaded = true
+        }
       }
     },
 
@@ -381,22 +487,14 @@ export const useDataSourcesStore = defineStore('dataSources', {
      * @returns `true` when the upload was accepted.
      */
     async uploadCapture(file: File, force = false): Promise<boolean> {
-      this.isUploading = true
-      this.importFile = file
-      this.importRejection = null
-      this.importStatus = null
-      this.importAccepted = null
-      try {
-        this.importAccepted = await usePcapImport().uploadCapture(file, { force })
-        await this.refreshImportStatus()
-        await this.fetchRecentImports()
-        return true
-      } catch (error: unknown) {
-        this.importRejection = toRejection(error)
-        return false
-      } finally {
-        this.isUploading = false
+      const [id] = this.enqueueImports([file])
+      if (id === undefined) return false
+      const row = this.importQueue.find((item) => item.localId === id)!
+      if (force) {
+        row.forceConfirmed = true
+        row.forceSequence = ++this.importForceSequence
       }
+      return await this._waitImportUpload(row)
     },
 
     /**
@@ -405,9 +503,10 @@ export const useDataSourcesStore = defineStore('dataSources', {
      * @returns `true` when the forced upload was accepted.
      */
     async forceRetryUpload(): Promise<boolean> {
-      const file = this.importFile
-      if (!file) return false
-      return await this.uploadCapture(file, true)
+      const row = this.selectedImport
+      if (!row?.file || row.uploadState !== 'conflict') return false
+      this.confirmImportForce(row.localId)
+      return await this._waitImportUpload(row)
     },
 
     /**
@@ -418,38 +517,459 @@ export const useDataSourcesStore = defineStore('dataSources', {
      * surface shows.
      */
     async refreshImportStatus(): Promise<void> {
-      const displayId = this.importAccepted?.display_id
-      if (!displayId) return
-      try {
-        this.importStatus = await usePcapImport().fetchStatus(displayId)
-      } catch {
-        // A transient status read failure must not clobber the last known
-        // state or fabricate a failure the backend never reported.
-      }
+      const row = this.selectedImport
+      if (!row || !importIdentity(row) || importBlocked(row) || this.importAuthStopped) return
+      const runtime = this._importRuntime()
+      const id = importIdentity(row)!
+      if ((runtime.failures.get(id) ?? 0) > 0 && (runtime.due.get(id) ?? 0) > Date.now()) return
+      await this._pollQueueImport(importIdentity(row)!)
+      void this._scheduleImports()
     },
 
     /**
      * Cancel the followed import job.
      */
     async cancelImport(): Promise<void> {
-      const displayId = this.importAccepted?.display_id
-      if (!displayId) return
-      try {
-        this.importStatus = await usePcapImport().cancelImport(displayId)
-      } catch (error: unknown) {
-        this.recentError = `Failed to cancel import: ${extractErrorMessage(error)}`
-      }
-      await this.fetchRecentImports()
+      if (this.importSelectedId !== null) await this.cancelQueueImport(this.importSelectedId)
     },
 
     /**
      * Drop the current upload, its outcome and any pending conflict.
      */
     resetImport(): void {
-      this.importFile = null
-      this.importAccepted = null
-      this.importStatus = null
-      this.importRejection = null
+      const row = this.selectedImport
+      if (!row || importOwnsBarrier(row)) return
+      if (row.uploadState === 'pending' || row.uploadState === 'conflict' || row.uploadState === 'failed') {
+        row.uploadState = 'cancelled'
+        row.file = null
+      }
+      this.importSelectedId = null
+      void this._scheduleImports()
+    },
+
+    /** Acquire this store's sole scheduler and dispose/reset guards. */
+    _importRuntime(): ImportQueueRuntime {
+      let runtime = importRuntimes.get(this)
+      if (!runtime) {
+        runtime = {
+          active: false,
+          generation: 0,
+          reconciled: false,
+          pump: null,
+          refresh: null,
+          timer: null,
+          uploads: new Map(),
+          polls: new Map(),
+          cancels: new Map(),
+          due: new Map(),
+          failures: new Map(),
+          waiters: new Map(),
+        }
+        importRuntimes.set(this, runtime)
+        const dispose = this.$dispose.bind(this)
+        this.$dispose = () => {
+          this.stopImportQueue()
+          dispose()
+        }
+        const reset = this.$reset.bind(this)
+        this.$reset = () => {
+          this.stopImportQueue()
+          const retained = {
+            importQueue: this.importQueue,
+            importSequence: this.importSequence,
+            importForceSequence: this.importForceSequence,
+            importSelectedId: this.importSelectedId,
+            importQueueError: this.importQueueError,
+            importAuthStopped: this.importAuthStopped,
+          }
+          reset()
+          this.$patch(retained)
+        }
+      }
+      return runtime
+    },
+
+    /** Append every File in selection order and start the application-owned queue. */
+    enqueueImports(files: Iterable<File>): number[] {
+      const ids: number[] = []
+      for (const file of Array.from(files)) {
+        const row = this._appendImportRow(file)
+        ids.push(row.localId)
+        this.importSelectedId = row.localId
+      }
+      void this.startImportQueue()
+      return ids
+    },
+
+    _appendImportRow(file: File | null, status: PcapImportStatus | null = null): ImportQueueItem {
+      const sequence = ++this.importSequence
+      const row: ImportQueueItem = {
+        localId: sequence,
+        sequence,
+        file: file ? markRaw(file) : null,
+        name: file?.name ?? status?.original_filename ?? status?.display_id ?? 'Unknown capture',
+        sizeBytes: file?.size ?? status?.size_bytes ?? null,
+        lastModified: file?.lastModified ?? null,
+        uploadState: file ? 'pending' : 'accepted',
+        uploadLoaded: null,
+        uploadTotal: null,
+        accepted: null,
+        observedDisplayId: null,
+        status,
+        rejection: null,
+        cancelError: null,
+        pollError: null,
+        cancellationRequested: false,
+        forceConfirmed: false,
+        forceSequence: null,
+      }
+      this.importQueue.push(row)
+      return this.importQueue[this.importQueue.length - 1]!
+    },
+
+    /** Start/reconcile without resetting File rows; navigation need not stop this lifecycle. */
+    async startImportQueue(): Promise<void> {
+      const runtime = this._importRuntime()
+      if (this.importAuthStopped) return
+      runtime.active = true
+      await this._scheduleImports()
+    },
+
+    /** Stop only owned handles, retain all rows, and invalidate asynchronous continuations. */
+    stopImportQueue(): void {
+      const runtime = this._importRuntime()
+      runtime.active = false
+      runtime.generation++
+      runtime.reconciled = false
+      if (runtime.timer !== null) clearTimeout(runtime.timer)
+      runtime.timer = null
+      for (const [id, controller] of runtime.uploads) {
+        const row = this.importQueue.find((item) => item.localId === id)
+        if (row?.uploadState === 'uploading') {
+          row.uploadState = 'uncertain'
+          row.pollError = 'Upload stopped; server acceptance is unverified.'
+        }
+        controller.abort()
+      }
+      for (const resolve of runtime.waiters.values()) resolve(false)
+      runtime.waiters.clear()
+    },
+
+    /** Explicit recovery after the established session/permission flow, never upload resubmission. */
+    async resumeImportQueue(): Promise<void> {
+      this.importAuthStopped = false
+      await this.refreshImportQueue()
+    },
+
+    /** Explicit filtered reconciliation; history alone is never absence proof. */
+    async refreshImportQueue(): Promise<void> {
+      const runtime = this._importRuntime()
+      if (this.importAuthStopped) return
+      runtime.active = true
+      runtime.reconciled = false
+      await this._reconcileImportQueue()
+      await this._scheduleImports()
+    },
+
+    /** Confirm only this conflict, preserving confirmation order ahead of unstarted rows. */
+    confirmImportForce(localId: number): void {
+      const row = this.importQueue.find((item) => item.localId === localId)
+      if (!row?.file || row.uploadState !== 'conflict') return
+      row.forceConfirmed = true
+      row.forceSequence = ++this.importForceSequence
+      row.uploadState = 'pending'
+      void this.startImportQueue()
+    },
+
+    _waitImportUpload(row: ImportQueueItem): Promise<boolean> {
+      if (row.uploadState === 'accepted') return Promise.resolve(true)
+      if (!['pending', 'uploading'].includes(row.uploadState)) return Promise.resolve(false)
+      return new Promise((resolve) => {
+        this._importRuntime().waiters.set(row.localId, resolve)
+      })
+    },
+
+    _stopImportOnAuth(error: unknown): boolean {
+      if (toRejection(error).kind !== 'unauthorized') return false
+      this.importAuthStopped = true
+      this.importQueueError = 'Import queue paused: authentication or permissions must be restored explicitly.'
+      const runtime = this._importRuntime()
+      if (runtime.timer !== null) clearTimeout(runtime.timer)
+      runtime.timer = null
+      return true
+    },
+
+    async _reconcileImportQueue(): Promise<void> {
+      const runtime = this._importRuntime()
+      if (runtime.refresh) return await runtime.refresh
+      const generation = runtime.generation
+      const work = async () => {
+        this.importQueueError = null
+        try {
+          for (const state of IMPORT_ACTIVE_STATES) {
+            const result = await usePcapImport().fetchByState(state, 200)
+            if (generation !== runtime.generation || this.importAuthStopped) return
+            if (
+              !result ||
+              !Array.isArray(result.items) ||
+              !Number.isInteger(result.total) ||
+              result.total !== result.items.length ||
+              result.items.some((job) => !validImportStatus(job) || job.state !== state)
+            ) {
+              throw new Error(`Malformed or missing ${state} import listing; dispatch is blocked.`)
+            }
+            for (const job of result.items) {
+              if (!this.importQueue.some((row) => importIdentity(row) === job.display_id))
+                this._appendImportRow(null, job)
+              this._applyImportStatus(job)
+            }
+            if (result.total >= 200 || result.items.length >= 200) {
+              throw new Error(`The ${state} import listing reached 200 entries; older active work is unverified.`)
+            }
+          }
+          runtime.reconciled = true
+        } catch (error: unknown) {
+          if (generation !== runtime.generation) return
+          this._stopImportOnAuth(error)
+          this.importQueueError = `Import reconciliation blocked: ${extractErrorMessage(error)}`
+        }
+      }
+      runtime.refresh = work()
+      try {
+        await runtime.refresh
+      } finally {
+        runtime.refresh = null
+      }
+    },
+
+    _applyImportStatus(job: PcapImportStatus): void {
+      const runtime = this._importRuntime()
+      for (const row of this.importQueue.filter((item) => importIdentity(item) === job.display_id)) {
+        if (row.status && importIsTerminal(row.status.state)) continue
+        if (row.status?.state === 'cancelling' && ['queued', 'running'].includes(job.state)) continue
+        row.status = job
+        row.uploadState = 'accepted'
+        row.pollError = null
+      }
+      runtime.failures.delete(job.display_id)
+      runtime.due.set(job.display_id, Date.now() + 2000)
+      if (importIsTerminal(job.state)) runtime.reconciled = false
+    },
+
+    /** Coalesce all readers of an identity, including the temporary page polling wrapper. */
+    async _pollQueueImport(displayId: string): Promise<void> {
+      const runtime = this._importRuntime()
+      if (runtime.polls.has(displayId)) return await runtime.polls.get(displayId)
+      if (runtime.cancels.has(displayId)) return await runtime.cancels.get(displayId)
+      if (
+        this.importAuthStopped ||
+        this.importQueue.some((row) => importIdentity(row) === displayId && importBlocked(row))
+      )
+        return
+      const generation = runtime.generation
+      const work = async () => {
+        try {
+          const job = await usePcapImport().fetchStatus(displayId)
+          if (generation !== runtime.generation) return
+          if (!validImportStatus(job) || job.display_id !== displayId)
+            throw new Error('Import detail identity/state is unverified.')
+          this._applyImportStatus(job)
+          if (importIsTerminal(job.state)) await this.fetchRecentImports()
+        } catch (error: unknown) {
+          if (generation !== runtime.generation) return
+          this._stopImportOnAuth(error)
+          for (const row of this.importQueue.filter((item) => importIdentity(item) === displayId)) {
+            row.pollError = `Failed to poll import: ${extractErrorMessage(error)}`
+          }
+          const failures = (runtime.failures.get(displayId) ?? 0) + 1
+          runtime.failures.set(displayId, failures)
+          runtime.due.set(displayId, Date.now() + Math.min(30000, 2000 * 2 ** Math.min(failures - 1, 4)))
+        }
+      }
+      const promise = work()
+      runtime.polls.set(displayId, promise)
+      try {
+        await promise
+      } finally {
+        runtime.polls.delete(displayId)
+      }
+    },
+
+    /** The only upload scheduler; acceptance is never its release oracle. */
+    async _scheduleImports(): Promise<void> {
+      const runtime = this._importRuntime()
+      if (runtime.pump) return await runtime.pump
+      if (!runtime.active || this.importAuthStopped) return
+      if (runtime.timer !== null) clearTimeout(runtime.timer)
+      runtime.timer = null
+      const generation = runtime.generation
+      const work = async () => {
+        while (runtime.active && generation === runtime.generation && !this.importAuthStopped) {
+          if (!runtime.reconciled) {
+            await this._reconcileImportQueue()
+            if (!runtime.reconciled || generation !== runtime.generation || this.importAuthStopped) return
+          }
+          const barriers = this.importQueue.filter(importOwnsBarrier)
+          if (barriers.length) {
+            const ids = [
+              ...new Set(
+                barriers
+                  .filter((row) => !importBlocked(row))
+                  .map(importIdentity)
+                  .filter((id): id is string => !!id),
+              ),
+            ]
+            for (const id of ids) {
+              if ((runtime.due.get(id) ?? 0) <= Date.now()) await this._pollQueueImport(id)
+              if (generation !== runtime.generation || this.importAuthStopped) return
+            }
+            if (!this.importQueue.some(importOwnsBarrier)) continue
+            const due = ids
+              .filter((id) =>
+                this.importQueue.some(
+                  (row) => importIdentity(row) === id && importOwnsBarrier(row) && !importBlocked(row),
+                ),
+              )
+              .map((id) => runtime.due.get(id) ?? Date.now() + 2000)
+            if (due.length) {
+              runtime.timer = setTimeout(
+                () => {
+                  runtime.timer = null
+                  void this._scheduleImports()
+                },
+                Math.max(0, Math.min(...due) - Date.now()),
+              )
+            }
+            return
+          }
+          const row = this.importQueue
+            .filter((item) => item.uploadState === 'pending' && item.file)
+            .sort((a, b) => (a.forceSequence ?? Infinity) - (b.forceSequence ?? Infinity) || a.sequence - b.sequence)[0]
+          if (!row?.file) return
+          row.uploadState = 'uploading'
+          row.rejection = null
+          const controller = new AbortController()
+          runtime.uploads.set(row.localId, controller)
+          let success = false
+          try {
+            const envelope = await usePcapImport().uploadCapture(row.file, {
+              force: row.forceConfirmed,
+              signal: controller.signal,
+              onUploadProgress: (progress) => {
+                if (generation !== runtime.generation || row.uploadState !== 'uploading') return
+                row.uploadLoaded = progress.loaded
+                row.uploadTotal = progress.total
+              },
+            })
+            if (generation !== runtime.generation) return
+            if (envelope && typeof envelope.display_id === 'string' && envelope.display_id.length > 0) {
+              row.observedDisplayId = envelope.display_id
+            }
+            if (!validImportStatus(envelope)) throw new Error('Upload acceptance identity/state is unverified.')
+            row.accepted = envelope
+            row.uploadState = 'accepted'
+            await this._pollQueueImport(envelope.display_id)
+            if (generation !== runtime.generation) return
+            if (row.cancellationRequested) await this.cancelQueueImport(row.localId)
+            await this.fetchRecentImports()
+            success = true
+          } catch (error: unknown) {
+            if (generation !== runtime.generation) return
+            row.rejection = toRejection(error)
+            this._stopImportOnAuth(error)
+            row.uploadState =
+              row.rejection.status === 409
+                ? 'conflict'
+                : [400, 413, 422, 401, 403].includes(row.rejection.status)
+                  ? 'failed'
+                  : 'uncertain'
+            // A transport may preserve an identity actually observed before interruption.
+            // No filename/size/time comparison can supply this evidence.
+            if (
+              row.uploadState === 'uncertain' &&
+              error &&
+              typeof error === 'object' &&
+              'display_id' in error &&
+              typeof error.display_id === 'string' &&
+              error.display_id.length > 0
+            ) {
+              row.observedDisplayId = error.display_id
+              await this._pollQueueImport(error.display_id)
+            }
+          } finally {
+            runtime.uploads.delete(row.localId)
+            runtime.waiters.get(row.localId)?.(success)
+            runtime.waiters.delete(row.localId)
+          }
+          // Every next POST receives a fresh bounded domain reconciliation.
+          runtime.reconciled = false
+        }
+      }
+      runtime.pump = work()
+      try {
+        await runtime.pump
+      } finally {
+        runtime.pump = null
+        // Legacy single-file callers receive no acceptance while dispatch is held.
+        for (const [id, resolve] of runtime.waiters) {
+          const row = this.importQueue.find((item) => item.localId === id)
+          resolve(row?.uploadState === 'accepted')
+        }
+        runtime.waiters.clear()
+        if (runtime.active && generation !== runtime.generation && !this.importAuthStopped) void this._scheduleImports()
+      }
+    },
+
+    /** Cancel only local eligibility or the exact persisted owner; no metadata matching. */
+    async cancelQueueImport(localId: number): Promise<void> {
+      const row = this.importQueue.find((item) => item.localId === localId)
+      if (!row) return
+      const runtime = this._importRuntime()
+      const id = importIdentity(row)
+      if (!id) {
+        if (row.uploadState === 'uploading') {
+          row.cancellationRequested = true
+          row.uploadState = 'uncertain'
+          row.pollError = 'Cancellation requested; server acceptance is unverified.'
+          runtime.uploads.get(localId)?.abort()
+        } else if (['pending', 'conflict', 'failed'].includes(row.uploadState)) {
+          row.uploadState = 'cancelled'
+          row.file = null
+          runtime.waiters.get(localId)?.(false)
+          runtime.waiters.delete(localId)
+          void this._scheduleImports()
+        }
+        return
+      }
+      if (this.importAuthStopped || (row.status && importIsTerminal(row.status.state))) return
+      if (runtime.cancels.has(id)) return await runtime.cancels.get(id)
+      const generation = runtime.generation
+      const work = async () => {
+        await runtime.polls.get(id)
+        if (generation !== runtime.generation || this.importAuthStopped) return
+        row.cancelError = null
+        row.cancellationRequested = true
+        try {
+          const job = await usePcapImport().cancelImport(id)
+          if (generation !== runtime.generation) return
+          if (!validImportStatus(job) || job.display_id !== id)
+            throw new Error('Cancellation identity/state is unverified.')
+          this._applyImportStatus(job)
+        } catch (error: unknown) {
+          if (generation !== runtime.generation) return
+          this._stopImportOnAuth(error)
+          row.cancelError = `Failed to cancel import: ${extractErrorMessage(error)}`
+        }
+        if (generation === runtime.generation) await this.fetchRecentImports()
+      }
+      const promise = work()
+      runtime.cancels.set(id, promise)
+      try {
+        await promise
+      } finally {
+        runtime.cancels.delete(id)
+      }
+      void this._scheduleImports()
     },
   },
 })
