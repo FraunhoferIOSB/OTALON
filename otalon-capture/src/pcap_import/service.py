@@ -16,6 +16,7 @@ from typing import Any, Dict, Optional
 
 from loguru import logger
 
+from ._adapter import adapter_module
 from .models import (
     PHASE_LABELS,
     PHASE_ORDINALS,
@@ -29,6 +30,8 @@ from .models import (
 )
 from .reporter import JobReporter, NullJobReporter
 from .runner import ImportCancelled, ImportRunner, ProgressCallback
+
+TerminalWriteError = adapter_module("write_failure").TerminalWriteError
 
 
 class WorkerBusyError(RuntimeError):
@@ -225,6 +228,8 @@ class ImportService:
 
         try:
             result = self._runner.run(job, self._make_progress(job.display_id), cancel_event)
+        except TerminalWriteError as error:
+            self._finish_failed(job, TerminalWriteError(error.status))
         except ImportCancelled as cancelled:
             self._finish_cancelled(job, str(cancelled))
         except BaseException as error:  # noqa: BLE001 - a bad job must not kill the worker
@@ -283,12 +288,16 @@ class ImportService:
     def _finish_failed(self, job: ImportRequest, error: BaseException) -> None:
         """Move the job to ``failed``, carrying a diagnostic message."""
 
-        diagnosis = f"{type(error).__name__}: {error}"
-        logger.exception(
-            "Import job {display_id} failed: {error}",
-            display_id=job.display_id,
-            error=diagnosis,
-        )
+        if isinstance(error, TerminalWriteError):
+            diagnosis = f"TerminalWriteError: {TerminalWriteError(error.status)}"
+            logger.error("Import job {display_id} failed: {error}", display_id=job.display_id, error=diagnosis)
+        else:
+            diagnosis = f"{type(error).__name__}: {error}"
+            logger.exception(
+                "Import job {display_id} failed: {error}",
+                display_id=job.display_id,
+                error=diagnosis,
+            )
         self._settle(
             job.display_id,
             ImportState.FAILED,

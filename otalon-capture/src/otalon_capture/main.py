@@ -21,6 +21,7 @@ from capture_runtime import ADAPTER_SNAPSHOT_PATH, AdapterSnapshot, CaptureInten
 from .helper import configure_logger, wait_for_influx_health
 from .pipeline import CapturePipeline
 from .settings import Settings
+from .write_failure import TerminalWriteError
 
 ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
 
@@ -113,6 +114,8 @@ def main() -> None:
     signal.signal(signal.SIGTERM, handle_signal)
 
     heartbeat = None
+    failed = False
+    auth_status: int | None = None
     terminal = SourceState.DEGRADED
     reason = "dependency_unavailable"
     try:
@@ -145,7 +148,19 @@ def main() -> None:
             heartbeat.start()
         logger.info("Adapter started; acquisition readiness is not metric publication proof.")
         runtime_state.pipeline.run()
+    except TerminalWriteError as error:
+        failed = True
+        terminal = SourceState.BLOCKED
+        reason = "upstream_unavailable"
+        auth_status = error.status
+        logger.warning("Adapter metric publication refused; acquisition blocked.")
+        try:
+            raise TerminalWriteError(auth_status) from None
+        except TerminalWriteError as failure:
+            failure.__context__ = None
+            raise
     except Exception as error:
+        failed = True
         terminal = SourceState.BLOCKED
         if isinstance(error, PermissionError):
             reason = "privilege_denied"
@@ -155,9 +170,20 @@ def main() -> None:
         runtime_state.stop()
         if heartbeat is not None:
             heartbeat.join(timeout=1.0)
+            if heartbeat.is_alive():
+                # The final snapshot must follow the last readiness write.
+                heartbeat.join()
         if generation is not None:
-            _write_snapshot(generation, terminal, reason)
-        logger.info("Adapter terminated cleanly.")
+            try:
+                _write_snapshot(generation, terminal, reason)
+            except Exception:
+                if auth_status is None:
+                    raise
+                logger.warning("Adapter terminal snapshot write failed after publication refusal.")
+        if failed:
+            logger.warning("Adapter terminated after failure.")
+        else:
+            logger.info("Adapter terminated cleanly.")
 
 
 if __name__ == "__main__":

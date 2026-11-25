@@ -24,6 +24,7 @@ from .netcap import Netcap
 from .proto_aggregation import ProtoAggregator
 from .settings import InfluxConfig, Settings
 from .worker import AggregationWorker
+from .write_failure import TerminalWriteError
 
 QUEUE_MAX_SIZE = 10000
 
@@ -134,6 +135,7 @@ class CapturePipeline:
         self._progress_interval = max(1, int(progress_interval))
         self._running = True
         self._result = PipelineResult()
+        self._terminal_status: int | None = None
 
         self._writer = create_writer(settings.influx, settings)
         self._aggregator = SparsePortAggregator(
@@ -162,15 +164,54 @@ class CapturePipeline:
                 (for example the import worker) can record it as a failure.
         """
 
-        self._start_aggregation_workers()
+        primary: BaseException | None = None
         try:
+            self._start_aggregation_workers()
             for value in self._capture.capture_loop():
+                self._check_terminal_workers()
                 if not self._running:
                     break
                 self._handle_record(value)
+            self._check_terminal_workers()
+        except TerminalWriteError as failure:
+            self._refuse_publication(failure.status)
+        except BaseException as error:
+            primary = error
         finally:
-            self._shutdown()
+            try:
+                self._shutdown()
+            except TerminalWriteError as failure:
+                self._refuse_publication(failure.status)
+            except BaseException as error:
+                if primary is None:
+                    primary = error
+        self._raise_if_terminal()
+        if primary is not None:
+            raise primary
         return self._result
+
+    def _refuse_publication(self, status: int) -> None:
+        if self._terminal_status is None:
+            self._terminal_status = status
+        for worker in self._workers:
+            worker.refuse_publication(self._terminal_status)
+
+    def _check_terminal_workers(self) -> None:
+        for worker in self._workers:
+            terminal = worker.terminal_error
+            if terminal is not None:
+                self._refuse_publication(terminal.status)
+                worker.stop()
+                break
+        self._raise_if_terminal()
+
+    def _raise_if_terminal(self) -> None:
+        if self._terminal_status is not None:
+            try:
+                raise TerminalWriteError(self._terminal_status) from None
+            except TerminalWriteError as failure:
+                failure.__context__ = None
+                raise
 
     def stop(self) -> None:
         """Signal the pipeline and its capture source to stop."""
@@ -179,11 +220,15 @@ class CapturePipeline:
         try:
             self._capture.stop()
         except Exception as error:  # noqa: BLE001 - stopping must never raise
-            logger.warning("Capture stop failed: {error}", error=error)
+            if self._terminal_status is not None:
+                logger.warning("Capture stop failed after publication refusal.")
+            else:
+                logger.warning("Capture stop failed: {error}", error=error)
 
     def _handle_record(self, value: Any) -> None:
         """Fan a raw record out to the workers and into the write path."""
 
+        self._check_terminal_workers()
         self._enqueue_record(value)
         self._result.records_processed += 1
         if self._settings.preprocess.aggregate_sparse_ports:
@@ -197,6 +242,7 @@ class CapturePipeline:
     def _write(self, value: Any) -> None:
         """Write one value and track counters plus the covered time range."""
 
+        self._check_terminal_workers()
         if self._writer is not None:
             self._writer.write(value)
         self._result.points_written += 1
@@ -242,11 +288,20 @@ class CapturePipeline:
         if writer is None:
             logger.warning("MAC aggregation enabled but mac_influx config is missing.")
             return
-        aggregator = MacAggregator(
-            enabled=True,
-            emit_interval_ms=settings.mac_aggregation.emit_interval_ms,
-            protocol_map=_protocol_map(settings),
-        )
+        try:
+            aggregator = MacAggregator(
+                enabled=True,
+                emit_interval_ms=settings.mac_aggregation.emit_interval_ms,
+                protocol_map=_protocol_map(settings),
+            )
+        except BaseException:
+            try:
+                writer.close()
+            except TerminalWriteError as failure:
+                self._refuse_publication(failure.status)
+            except BaseException:
+                logger.warning("Partial MAC writer cleanup failed.")
+            raise
         self._mac_queue = self._spawn_worker("mac-aggregation", aggregator, writer)
 
     def _start_proto_worker(self) -> None:
@@ -259,11 +314,20 @@ class CapturePipeline:
         if writer is None:
             logger.warning("Proto aggregation enabled but proto_influx config is missing.")
             return
-        aggregator = ProtoAggregator(
-            enabled=True,
-            emit_interval_ms=settings.proto_aggregation.emit_interval_ms,
-            protocol_map=_protocol_map(settings),
-        )
+        try:
+            aggregator = ProtoAggregator(
+                enabled=True,
+                emit_interval_ms=settings.proto_aggregation.emit_interval_ms,
+                protocol_map=_protocol_map(settings),
+            )
+        except BaseException:
+            try:
+                writer.close()
+            except TerminalWriteError as failure:
+                self._refuse_publication(failure.status)
+            except BaseException:
+                logger.warning("Partial protocol writer cleanup failed.")
+            raise
         self._proto_queue = self._spawn_worker("proto-aggregation", aggregator, writer)
 
     def _spawn_worker(self, name: str, aggregator: Any, writer: Any) -> "queue.Queue[Any]":
@@ -276,26 +340,47 @@ class CapturePipeline:
             aggregator=aggregator,
             writer=writer,
         )
-        worker.start()
         self._workers.append(worker)
+        worker.start()
         logger.info("Aggregation worker '{name}' started.", name=name)
         return work_queue
 
     def _shutdown(self) -> None:
         """Flush the aggregator, close the writer and stop all workers."""
 
+        self.stop()
+        # Joined secondary EOF writes can fail even when the main measurement succeeded.
+        cleanup: BaseException | None = None
         try:
+            self._stop_aggregation_workers()
+        except BaseException as error:
+            cleanup = error
+        try:
+            self._check_terminal_workers()
             if self._settings.preprocess.aggregate_sparse_ports:
                 for aggregated_value in self._aggregator.flush(force=True):
                     self._write(aggregated_value)
+        except TerminalWriteError as failure:
+            self._refuse_publication(failure.status)
         except Exception as error:  # noqa: BLE001 - cleanup must not mask the cause
             logger.exception("Flush aggregation failed: {error}", error=error)
         if self._writer is not None:
             try:
+                if self._terminal_status is not None and isinstance(self._writer, InfluxDBWriter):
+                    with self._writer._lock:
+                        self._writer._closed = True
+                        self._writer._release_client_locked()
                 self._writer.close()
+            except TerminalWriteError as failure:
+                self._refuse_publication(failure.status)
             except Exception as error:  # noqa: BLE001 - cleanup must not mask the cause
-                logger.exception("Closing InfluxDB writer failed: {error}", error=error)
-        self._stop_aggregation_workers()
+                if self._terminal_status is not None:
+                    logger.warning("Closing InfluxDB writer failed after refusal.")
+                else:
+                    logger.exception("Closing InfluxDB writer failed: {error}", error=error)
+        self._raise_if_terminal()
+        if cleanup is not None:
+            raise cleanup
 
     def _stop_aggregation_workers(self) -> None:
         """Stop worker threads gracefully and wait for their final flush."""
@@ -303,6 +388,8 @@ class CapturePipeline:
         for worker in self._workers:
             try:
                 worker.stop()
+            except TerminalWriteError as failure:
+                self._refuse_publication(failure.status)
             except Exception as error:  # noqa: BLE001 - keep stopping the rest
                 logger.exception(
                     "Error stopping worker '{name}': {error}",
@@ -310,10 +397,18 @@ class CapturePipeline:
                     error=error,
                 )
         for worker in self._workers:
-            worker.join(timeout=10.0)
+            if worker.ident is not None:
+                worker.join(timeout=10.0)
             if worker.is_alive():
                 logger.warning(
                     "Worker '{name}' did not terminate within timeout.",
                     name=worker.name,
                 )
+                # Timeout is not settlement. Keep ownership and wait for the actual
+                # thread boundary; whole-process forced STOP is a separate owner gate.
+                worker.join()
+            terminal = worker.terminal_error
+            if terminal is not None:
+                self._refuse_publication(terminal.status)
+                worker.stop()
         self._workers = []

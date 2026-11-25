@@ -13,6 +13,9 @@ from typing import Any, List, Protocol
 
 from loguru import logger
 
+from .influxdb_writer import InfluxDBWriter
+from .write_failure import TerminalWriteError
+
 
 class Aggregator(Protocol):
     """Structural type expected from MAC / Proto aggregators."""
@@ -60,6 +63,9 @@ class AggregationWorker(threading.Thread):
         self.writer = writer
         self.poll_timeout = poll_timeout
         self._running = True
+        self._terminal_status: int | None = None
+        self._terminal_lock = threading.Lock()
+        self._finalized = False
         self.records_failed = 0
         """Records dropped because processing raised.
 
@@ -71,50 +77,83 @@ class AggregationWorker(threading.Thread):
     def run(self) -> None:
         """Consume records from the queue until :meth:`stop` is called."""
         logger.info("Worker '{name}' started.", name=self.name)
-        while self._running:
-            try:
-                record = self.input_queue.get(timeout=self.poll_timeout)
-            except queue.Empty:
-                self._periodic_flush()
-                continue
+        try:
+            while self._running and self._terminal_status is None:
+                try:
+                    record = self.input_queue.get(timeout=self.poll_timeout)
+                except queue.Empty:
+                    if self._running:
+                        self._periodic_flush()
+                    continue
 
-            # task_done() must run exactly once per successful get(), even
-            # when processing raises. Calling it only on the success path
-            # left the queue's unfinished-task counter permanently high, so
-            # any queue.join() blocked forever and the dropped record was
-            # invisible in the counters (audit QUA-08).
+                try:
+                    self._process_record(record)
+                except TerminalWriteError as failure:
+                    self.refuse_publication(failure.status)
+                    self.records_failed += 1
+                except Exception as exc:
+                    logger.exception(
+                        "Worker '{name}' failed to process a record, dropping it: {error}",
+                        name=self.name,
+                        error=exc,
+                    )
+                    self.records_failed += 1
+                finally:
+                    self.input_queue.task_done()
+        except TerminalWriteError as failure:
+            self.refuse_publication(failure.status)
+        finally:
+            self._running = False
             try:
-                self._process_record(record)
-            except Exception as exc:
-                logger.exception(
-                    "Worker '{name}' failed to process a record, dropping it: {error}",
-                    name=self.name,
-                    error=exc,
-                )
-                self.records_failed += 1
+                self._drain_queue()
             finally:
-                self.input_queue.task_done()
+                self._final_flush()
         logger.info("Worker '{name}' exiting run loop.", name=self.name)
 
+    @property
+    def terminal_error(self) -> TerminalWriteError | None:
+        """Return fresh numeric-only evidence, never an exception retained by a thread."""
+        status = self._terminal_status
+        return TerminalWriteError(status) if status is not None else None
+
+    def refuse_publication(self, status: int) -> None:
+        """Stop later publication when this worker or its pipeline observes refusal."""
+        with self._terminal_lock:
+            if self._terminal_status is None:
+                self._terminal_status = TerminalWriteError(status).status
+        self._running = False
+
     def stop(self) -> None:
-        """Signal the worker to stop and flush remaining data.
+        """Signal stop; a started worker drains and finalizes on its own thread.
 
         After calling ``stop()``, the caller should ``join()`` the thread to
         wait for the final flush to complete.
         """
-        logger.info("Worker '{name}' stopping — draining queue and flushing.", name=self.name)
+        logger.info("Worker '{name}' stopping.", name=self.name)
         self._running = False
-        self._drain_queue()
-        self._final_flush()
+        if self.ident is None:
+            self._drain_queue()
+            self._final_flush()
+        elif not self.is_alive() and self._terminal_status is not None:
+            # A producer can enqueue between terminal thread exit and owner polling.
+            self._drain_queue()
 
     def _process_record(self, record: Any) -> None:
         """Feed a single record into the aggregator and write any emitted results."""
+        if self._terminal_status is not None:
+            return
         for result in self.aggregator.add(record):
+            if self._terminal_status is not None:
+                break
             self.writer.write(result)
 
     def _periodic_flush(self) -> None:
         """Flush time-expired buckets during idle periods."""
+        if self._terminal_status is not None:
+            return
         for result in self.aggregator.flush():
+            if self._terminal_status is not None:
+                break
             self.writer.write(result)
 
     def _drain_queue(self) -> None:
@@ -132,6 +171,9 @@ class AggregationWorker(threading.Thread):
 
             try:
                 self._process_record(record)
+            except TerminalWriteError as failure:
+                self.refuse_publication(failure.status)
+                self.records_failed += 1
             except Exception as exc:
                 logger.exception(
                     "Worker '{name}' failed to process a record while draining: {error}",
@@ -144,21 +186,46 @@ class AggregationWorker(threading.Thread):
 
     def _final_flush(self) -> None:
         """Force-flush the aggregator and close the writer."""
+        if self._finalized:
+            return
+        self._finalized = True
         try:
-            for result in self.aggregator.flush(force=True):
-                self.writer.write(result)
+            if self._terminal_status is None:
+                for result in self.aggregator.flush(force=True):
+                    if self._terminal_status is not None:
+                        break
+                    self.writer.write(result)
+        except TerminalWriteError as failure:
+            self.refuse_publication(failure.status)
         except Exception as exc:
-            logger.exception(
-                "Worker '{name}' flush failed: {error}",
-                name=self.name,
-                error=exc,
-            )
+            if self._terminal_status is not None:
+                logger.warning("Worker '{name}' finalization failed after refusal.", name=self.name)
+            else:
+                logger.exception(
+                    "Worker '{name}' flush failed: {error}",
+                    name=self.name,
+                    error=exc,
+                )
         try:
+            if self._terminal_status is not None and isinstance(self.writer, InfluxDBWriter):
+                # A sibling's refusal must not force-publish this writer's buffered values.
+                with self.writer._lock:
+                    self.writer._closed = True
+                    self.writer._release_client_locked()
             self.writer.close()
+        except TerminalWriteError as failure:
+            self.refuse_publication(failure.status)
         except Exception as exc:
-            logger.exception(
-                "Worker '{name}' writer close failed: {error}",
-                name=self.name,
-                error=exc,
-            )
-        logger.info("Worker '{name}' shutdown complete.", name=self.name)
+            if self._terminal_status is not None:
+                logger.warning("Worker '{name}' release failed after refusal.", name=self.name)
+            else:
+                logger.exception(
+                    "Worker '{name}' writer close failed: {error}",
+                    name=self.name,
+                    error=exc,
+                )
+        logger.info(
+            "Worker '{name}' finalized; terminal_auth={failed}.",
+            name=self.name,
+            failed=self._terminal_status is not None,
+        )
