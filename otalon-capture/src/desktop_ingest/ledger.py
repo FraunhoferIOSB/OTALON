@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import shutil
@@ -66,6 +67,9 @@ class EmptyLedger:
         return []
 
     def observation(self):
+        return None
+
+    def observation_age_seconds(self):
         return None
 
     def historical_status(self):
@@ -396,6 +400,7 @@ CREATE TABLE IF NOT EXISTS points(identity TEXT PRIMARY KEY,fields TEXT NOT NULL
         if self.db.execute("PRAGMA quick_check").fetchone()[0] != "ok":
             raise ValueError("ledger integrity failure")
         self._observation_at: float | None = None
+        self._observation_listener = None
 
     def close(self):
         with self.lock:
@@ -620,10 +625,21 @@ CREATE TABLE IF NOT EXISTS points(identity TEXT PRIMARY KEY,fields TEXT NOT NULL
                 (json.dumps(value), time.time()),
             )
             self._observation_at = time.monotonic()
+            if self._observation_listener is not None:
+                self._observation_listener()
+
+    def observation_age_seconds(self):
+        """Age of this process's accepted receipt, never persisted wall-time seen."""
+        with self.lock:
+            if self._observation_at is None:
+                return None
+            age = time.monotonic() - self._observation_at
+            return max(0.0, age) if math.isfinite(age) else None
 
     def observation(self):
         with self.lock:
-            if self._observation_at is None or time.monotonic() - self._observation_at >= 6:
+            age = self.observation_age_seconds()
+            if age is None or age >= 6:
                 return None
             row = self.db.execute("SELECT value FROM observations WHERE id=1").fetchone()
             return json.loads(row[0]) if row else None

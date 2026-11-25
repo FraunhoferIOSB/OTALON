@@ -5,13 +5,14 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import time
+import sys
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
 import uvicorn
 from loguru import logger
+from otalon_common.logging import configure_logging
 
 from capture_runtime import CaptureIntent, resolve_capture_intent
 from pcap_recorder.api import CaptureStatusProvider, CaptureStatusResponse, PcapService, create_app
@@ -58,6 +59,38 @@ def load_settings(path):
     selected = {key: raw[key] for key in ReliablePipelineSettings.model_fields if key in raw}
     selected["interval_ms"] = raw["capture"]["interval"]
     return ReliablePipelineSettings.model_validate(resolve_env_placeholders(selected, policy=MissingEnvVarPolicy.RAISE))
+
+
+def _configure_logging(path):
+    from otalon_common.config import MissingEnvVarPolicy, resolve_env_placeholders
+
+    if path is None:
+        # Empty NONE installations historically need no adapter config. Honor
+        # an existing sink without manufacturing a host path when none is set.
+        selected = {"file": os.environ.get("NETCAP_LOG_FILE"), "level": "INFO"}
+        if selected["file"] is None:
+            configure_logging(stream=sys.stdout)
+            return
+    else:
+        raw = json.loads(Path(path).read_text())
+        log = raw["log"]
+        selected = resolve_env_placeholders(
+            {"file": log["file"], "level": log["level"]}, policy=MissingEnvVarPolicy.RAISE
+        )
+    log_path = Path(selected["file"])
+    if not selected["file"]:
+        raise ValueError("NETCAP_LOG_FILE must be nonempty")
+    level = selected["level"].upper()
+    logger.level(level)
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    configure_logging(
+        log_file=log_path,
+        console_level=level,
+        file_level=level,
+        rotation="10 MB",
+        retention="14 days",
+        stream=sys.stdout,
+    )
 
 
 def build_app(settings, ledger, source_key, operator_key, *, intent=CaptureIntent.LIVE, source_key_file=None):
@@ -144,58 +177,24 @@ def build_app(settings, ledger, source_key, operator_key, *, intent=CaptureInten
 
     service = PcapService(index, ReceivedRing(index), ApiConfig(host="0.0.0.0", port=9090))
     app = create_app(service, Status(ledger))
-    for route in list(app.routes):
-        if getattr(route, "path", None) == "/health":
-            app.routes.remove(route)
-
-    @app.get("/health")
-    def health():
-        from fastapi.responses import JSONResponse
-
-        error = getattr(app.state, "processor_error", None)
-        return JSONResponse({"status": "blocked" if error else "ok"}, status_code=503 if error else 200)
-
     create_ingest_app(ledger, source_key, operator_key, app)
+    from .processor_lifecycle import CollectorFreshness, ProcessorOwner
+
+    app.state.processor = ProcessorOwner(settings, ledger, refresh_index)
+    app.state.collector = CollectorFreshness(ledger)
+    app.state.processor.collector = app.state.collector
 
     @asynccontextmanager
     async def lifespan(_):
-        from .pipeline import ContinuousPipeline
-
-        stop = asyncio.Event()
-        last_success = time.monotonic()
-
-        async def loop():
-            nonlocal last_success
-            pipeline = None
-            while not stop.is_set():
-                try:
-                    if pipeline is None:
-                        pipeline = await asyncio.to_thread(ContinuousPipeline, settings, ledger)
-                    await asyncio.to_thread(refresh_index)
-                    worked = await asyncio.to_thread(pipeline.process_one)
-                    last_success = time.monotonic()
-                    app.state.processor_error = None
-                except Exception as exc:
-                    app.state.processor_error = type(exc).__name__
-                    logger.error("Continuous processing blocked: {}", type(exc).__name__)
-                    if pipeline is not None:
-                        await asyncio.to_thread(pipeline.close)
-                    pipeline = None
-                    worked = False
-                try:
-                    await asyncio.wait_for(stop.wait(), timeout=0.1 if worked else 1)
-                except asyncio.TimeoutError:
-                    pass
-            if pipeline is not None:
-                await asyncio.to_thread(pipeline.close)
-
-        task = asyncio.create_task(loop())
-        app.state.processor_error = None
+        owner, collector = app.state.processor, app.state.collector
+        app.state.processor_task = asyncio.create_task(owner.run())
+        app.state.collector_task = asyncio.create_task(collector.run())
         try:
             yield
         finally:
-            stop.set()
-            await task
+            owner.stop_event.set()
+            await collector.stop()
+            await asyncio.gather(app.state.processor_task, app.state.collector_task)
             index.flush()
 
     app.router.lifespan_context = lifespan
@@ -204,6 +203,8 @@ def build_app(settings, ledger, source_key, operator_key, *, intent=CaptureInten
 
 def main():
     intent = resolve_capture_intent()
+    config_path = os.environ.get("NETCAP_CONFIG_FILE", "/app/config/config.json")
+    _configure_logging(os.environ.get("NETCAP_CONFIG_FILE") if intent is CaptureIntent.NONE else config_path)
     root = Path(os.environ.get("CONTINUOUS_ROOT", "/app/continuous"))
     if intent is CaptureIntent.NONE:
         ledger = Ledger.open_existing_readonly(root)
@@ -216,22 +217,30 @@ def main():
         return
 
     source_key_file = Path(os.environ.get("CONTINUOUS_SOURCE_KEY_FILE", "/run/secrets/continuous-source-key"))
-    key = source_key_file.read_text().strip()
+    try:
+        key = source_key_file.read_text().strip()
+    except OSError as exc:
+        raise ValueError("CONTINUOUS_SOURCE_KEY_FILE unavailable") from exc
     if len(key) < 32:
-        raise ValueError("source key missing")
-    ledger = Ledger(
-        root,
-        max_bytes=int(os.environ.get("CONTINUOUS_MAX_BYTES", "2000000000")),
-        min_free=int(os.environ.get("CONTINUOUS_MIN_FREE_BYTES", "1000000000")),
-    )
-    settings = load_settings(os.environ.get("NETCAP_CONFIG_FILE", "/app/config/config.json"))
+        raise ValueError("CONTINUOUS_SOURCE_KEY_FILE must contain the configured source key")
+    settings = load_settings(config_path)
     from capture_settings_base import OperatorAuthSettings
 
     operator_auth = OperatorAuthSettings.from_env()
     if not operator_auth.is_configured:
         raise ValueError("operator credentials missing")
     operator_key = operator_auth.operator_keys[0].get_secret_value()
-    uvicorn.run(build_app(settings, ledger, key, operator_key), host="0.0.0.0", port=9090, access_log=False)
+    if key == operator_key:
+        raise ValueError("separate source/operator credentials required")
+    ledger = Ledger(
+        root,
+        max_bytes=int(os.environ.get("CONTINUOUS_MAX_BYTES", "2000000000")),
+        min_free=int(os.environ.get("CONTINUOUS_MIN_FREE_BYTES", "1000000000")),
+    )
+    try:
+        uvicorn.run(build_app(settings, ledger, key, operator_key), host="0.0.0.0", port=9090, access_log=False)
+    finally:
+        ledger.close()
 
 
 if __name__ == "__main__":
