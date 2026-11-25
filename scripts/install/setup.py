@@ -151,6 +151,10 @@ def setup(workspace_arg: str, env_arg: str | None, without_ai: bool = False) -> 
             used.add(value)
             updates[key] = value
 
+    for key in ("CAPTURE_TYPE", "CAPTURE_SOURCE", "PCAP_IMPORT_MAX_UPLOAD_BYTES"):
+        if key not in document.values:
+            updates[key] = sample_document.values[key]
+
     workspace_value = document.resolved.get("WORKSPACE_DIR", "")
     if "WORKSPACE_DIR" not in document.values or not decode_value(
         document.values.get("WORKSPACE_DIR", "")

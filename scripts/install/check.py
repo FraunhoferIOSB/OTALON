@@ -80,21 +80,32 @@ def _validate_model_aliases(document) -> None:
     """Reject served-model aliases outside the accepted ASCII shape without echoing them."""
     for key in MODEL_ALIAS_KEYS:
         if not MODEL_ALIAS_RE.fullmatch(document.resolved.get(key, "")):
-            raise InstallError(f"{key}: expected 1-200 ASCII characters from A-Z a-z 0-9 . _ : / + -")
+            raise InstallError(
+                f"{key}: expected 1-200 ASCII characters from A-Z a-z 0-9 . _ : / + -"
+            )
 
 
 def _validate_service_key_shapes(document) -> None:
     """Allow opaque service keys, but reject characters that break registries or headers."""
     for key in SERVICE_KEYS:
         value = document.resolved.get(key, "")
-        if any(character.isspace() or not character.isprintable() or character in ",:" for character in value):
-            raise InstallError(f"{key}: must not contain whitespace, control characters, comma, or colon")
+        if any(
+            character.isspace() or not character.isprintable() or character in ",:"
+            for character in value
+        ):
+            raise InstallError(
+                f"{key}: must not contain whitespace, control characters, comma, or colon"
+            )
 
 
 def _validate_postgres_dsn(document, variable: str) -> None:
     """Compare one expanded DSN with the resolved PostgreSQL settings, reporting field names only."""
     value = document.resolved.get(variable, "")
-    if not value or has_placeholder(value) or any(c.isspace() or not c.isprintable() for c in value):
+    if (
+        not value
+        or has_placeholder(value)
+        or any(c.isspace() or not c.isprintable() for c in value)
+    ):
         raise InstallError(f"{variable}: DSN is missing or malformed")
     try:
         parsed = urlsplit(value)
@@ -102,8 +113,14 @@ def _validate_postgres_dsn(document, variable: str) -> None:
         port = parsed.port
     except ValueError as exc:
         raise InstallError(f"{variable}: DSN is malformed") from exc
-    if parsed.scheme not in ("postgresql", "postgresql+psycopg") or parsed.query or parsed.fragment:
-        raise InstallError(f"{variable}: expected a PostgreSQL DSN without query or fragment")
+    if (
+        parsed.scheme not in ("postgresql", "postgresql+psycopg")
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise InstallError(
+            f"{variable}: expected a PostgreSQL DSN without query or fragment"
+        )
 
     settings = document.resolved
     expected_user = settings.get("POSTGRES_USER", "")
@@ -112,15 +129,28 @@ def _validate_postgres_dsn(document, variable: str) -> None:
     expected_database = settings.get("POSTGRES_DATABASE", "")
     path = parsed.path
     mismatches = []
-    if not expected_user or parsed.username is None or unquote(parsed.username) != expected_user:
+    if (
+        not expected_user
+        or parsed.username is None
+        or unquote(parsed.username) != expected_user
+    ):
         mismatches.append("user")
-    if not expected_password or parsed.password is None or unquote(parsed.password) != expected_password:
+    if (
+        not expected_password
+        or parsed.password is None
+        or unquote(parsed.password) != expected_password
+    ):
         mismatches.append("password")
     if hostname != POSTGRES_BRIDGE_HOST:
         mismatches.append("host")
     if not expected_port or port is None or str(port) != expected_port:
         mismatches.append("port")
-    if not expected_database or not path.startswith("/") or "/" in path[1:] or unquote(path[1:]) != expected_database:
+    if (
+        not expected_database
+        or not path.startswith("/")
+        or "/" in path[1:]
+        or unquote(path[1:]) != expected_database
+    ):
         mismatches.append("database")
     if mismatches:
         raise InstallError(
@@ -143,12 +173,20 @@ def _validate_allowlists(document) -> None:
         if len(actual) != len(expected):
             raise InstallError(f"{variable}: entries do not match configured callers")
         for item, (caller, role, key_name) in zip(actual, expected):
-            if item[:2] != (caller, role) or item[2] != document.resolved.get(key_name, ""):
-                raise InstallError(f"{variable}: entries do not match configured callers")
+            if item[:2] != (caller, role) or item[2] != document.resolved.get(
+                key_name, ""
+            ):
+                raise InstallError(
+                    f"{variable}: entries do not match configured callers"
+                )
 
 
 def _validate_url(value: str, *, allow_offline_marker: bool = False) -> None:
-    if not value or has_placeholder(value) or any(character.isspace() for character in value):
+    if (
+        not value
+        or has_placeholder(value)
+        or any(character.isspace() for character in value)
+    ):
         raise InstallError("LITELLM_BASE_URL: endpoint is not configured")
     try:
         parsed = urlsplit(value)
@@ -163,15 +201,27 @@ def _validate_url(value: str, *, allow_offline_marker: bool = False) -> None:
         or parsed.username is not None
         or parsed.password is not None
     ):
-        raise InstallError("LITELLM_BASE_URL: expected an HTTP(S) URL without user information")
+        raise InstallError(
+            "LITELLM_BASE_URL: expected an HTTP(S) URL without user information"
+        )
     if parsed.query or parsed.fragment or not parsed.path.endswith("/v1"):
-        raise InstallError("LITELLM_BASE_URL: URL must end in /v1 without query or fragment")
-    if not allow_offline_marker and (".invalid" in value.lower() or "offline-unconfigured" in value.lower()):
-        raise InstallError("LITELLM_BASE_URL: offline or invalid marker is not ready for deployment")
+        raise InstallError(
+            "LITELLM_BASE_URL: URL must end in /v1 without query or fragment"
+        )
+    if not allow_offline_marker and (
+        ".invalid" in value.lower() or "offline-unconfigured" in value.lower()
+    ):
+        raise InstallError(
+            "LITELLM_BASE_URL: offline or invalid marker is not ready for deployment"
+        )
 
 
 def check(
-    workspace_arg: str, env_arg: str | None, syntax_only: bool, without_ai: bool = False, desktop: bool = False
+    workspace_arg: str,
+    env_arg: str | None,
+    syntax_only: bool,
+    without_ai: bool = False,
+    desktop: bool = False,
 ) -> int:
     workspace = absolute_workspace(workspace_arg)
     env_path = checked_path(workspace, env_arg or ".env.compose")
@@ -183,24 +233,55 @@ def check(
     except UnicodeDecodeError as exc:
         raise InstallError("Sample environment file is not valid UTF-8") from exc
 
+    capture_type = document.resolved.get("CAPTURE_TYPE", "NONE").strip()
+    if capture_type == "PCAP":
+        raise InstallError(
+            "CAPTURE_TYPE=PCAP is retired for service startup; use CAPTURE_TYPE=NONE "
+            "and import PCAP/PCAPNG through Operations / Data Sources."
+        )
+    if capture_type not in ("NONE", "LIVE"):
+        raise InstallError("CAPTURE_TYPE must be NONE or LIVE for service startup.")
+    unused_capture_source = capture_type == "NONE" or desktop
+    if not unused_capture_source and not re.fullmatch(
+        r"[A-Za-z0-9_][A-Za-z0-9_.:-]{0,14}",
+        document.resolved.get("CAPTURE_SOURCE", ""),
+    ):
+        raise InstallError(
+            "CAPTURE_SOURCE must be a nonempty, syntactically safe native interface name."
+        )
+
     required = sample_required_keys(sample)
+    # Intent has already been validated; an absent selection defaults to NONE.
+    required.discard("CAPTURE_TYPE")
+    if unused_capture_source:
+        required.discard("CAPTURE_SOURCE")
     if without_ai:
         required.difference_update(EXTERNAL_KEYS)
     if desktop:
         required.difference_update({"CAPTURE_SOURCE", "SCAN_SOURCE"})
     unresolved_required = reject_unresolved(document, required)
     if unresolved_required:
-        raise InstallError("Required values missing or unresolved: " + ", ".join(unresolved_required))
+        raise InstallError(
+            "Required values missing or unresolved: " + ", ".join(unresolved_required)
+        )
     if not without_ai:
         _validate_url(
             document.resolved.get("LITELLM_BASE_URL", ""),
             allow_offline_marker=syntax_only,
         )
         for key in EXTERNAL_KEYS:
-            if key not in document.resolved or not document.resolved[key] or has_placeholder(document.resolved[key]):
-                raise InstallError(f"{key}: external endpoint or served model alias is not configured")
+            if (
+                key not in document.resolved
+                or not document.resolved[key]
+                or has_placeholder(document.resolved[key])
+            ):
+                raise InstallError(
+                    f"{key}: external endpoint or served model alias is not configured"
+                )
         _validate_model_aliases(document)
     for key in document.resolved:
+        if unused_capture_source and key == "CAPTURE_SOURCE":
+            continue
         if without_ai and key in EXTERNAL_KEYS:
             continue
         if has_placeholder(document.resolved[key]):
@@ -211,17 +292,23 @@ def check(
         raise InstallError("POSTGRES_PASSWORD: expected 64 hexadecimal characters")
     influx = document.resolved.get("INFLUX_TOKEN", "")
     if not influx.startswith("apiv3_") or not HEX64_RE.fullmatch(influx[6:]):
-        raise InstallError("INFLUX_TOKEN: expected apiv3_ plus 64 hexadecimal characters")
+        raise InstallError(
+            "INFLUX_TOKEN: expected apiv3_ plus 64 hexadecimal characters"
+        )
     for dsn_key in DSN_KEYS:
         _validate_postgres_dsn(document, dsn_key)
 
     configured_workspace = document.resolved.get("WORKSPACE_DIR", "")
-    if not Path(configured_workspace).is_absolute() or configured_workspace != str(workspace):
+    if not Path(configured_workspace).is_absolute() or configured_workspace != str(
+        workspace
+    ):
         raise InstallError("WORKSPACE_DIR: must match the selected absolute workspace")
 
     unresolved_services = reject_unresolved(document, SERVICE_KEYS)
     if unresolved_services:
-        raise InstallError("Service keys missing or unresolved: " + ", ".join(unresolved_services))
+        raise InstallError(
+            "Service keys missing or unresolved: " + ", ".join(unresolved_services)
+        )
     _validate_service_key_shapes(document)
     _validate_allowlists(document)
 
@@ -230,31 +317,46 @@ def check(
         raise InstallError("OTALON_BUILD_REF: checkout reference is missing")
 
     if desktop:
-        print("Desktop local shape check only; Windows collector/Npcap capture must be verified separately.")
+        print(
+            "Desktop local shape check only; Windows collector/Npcap capture must be verified separately."
+        )
     if without_ai:
         prefix = "Syntax-only: " if syntax_only else ""
-        print(prefix + "local core configuration passed; LLM features unavailable (--without-ai).")
+        print(
+            prefix
+            + "local core configuration passed; LLM features unavailable (--without-ai)."
+        )
         return 0
 
     if syntax_only:
-        print("Syntax-only checks passed; offline markers, endpoint reachability, and served models were NOT checked.")
+        print(
+            "Syntax-only checks passed; offline markers, endpoint reachability, and served models were NOT checked."
+        )
         return 0
 
     for key in ("LITELLM_API_KEY", "CHAT_LLM_MODEL", "JOBS_LLM_MODEL"):
         value = document.resolved.get(key, "")
         if not value or has_placeholder(value):
-            raise InstallError(f"{key}: external credential or served model alias is not configured")
+            raise InstallError(
+                f"{key}: external credential or served model alias is not configured"
+            )
     for key in EXTERNAL_KEYS:
         value = document.resolved.get(key, "")
         if ".invalid" in value.lower() or "offline-unconfigured" in value.lower():
-            raise InstallError(f"{key}: offline or invalid marker is not ready for deployment")
-    print("Configuration shapes passed; endpoint reachability and served-model availability were NOT verified.")
+            raise InstallError(
+                f"{key}: offline or invalid marker is not ready for deployment"
+            )
+    print(
+        "Configuration shapes passed; endpoint reachability and served-model availability were NOT verified."
+    )
     return 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--workspace", default=str(Path(__file__).absolute().parents[2]))
+    parser.add_argument(
+        "--workspace", default=str(Path(__file__).absolute().parents[2])
+    )
     parser.add_argument("--env-file")
     parser.add_argument(
         "--syntax-only",
@@ -267,11 +369,19 @@ def main() -> int:
         help="validate core installation only; retain external LLM values and exclude the AI service at startup",
     )
     parser.add_argument(
-        "--desktop", action="store_true", help="validate Desktop mode; Linux capture/scan interfaces are not used"
+        "--desktop",
+        action="store_true",
+        help="validate Desktop mode; Linux capture/scan interfaces are not used",
     )
     args = parser.parse_args()
     try:
-        return check(args.workspace, args.env_file, args.syntax_only, args.without_ai, args.desktop)
+        return check(
+            args.workspace,
+            args.env_file,
+            args.syntax_only,
+            args.without_ai,
+            args.desktop,
+        )
     except OSError:
         print("Filesystem operation failed", file=sys.stderr)
         return 1
