@@ -268,21 +268,180 @@ export function usePcapImport(): UsePcapImportReturn {
    * @param file - The capture chosen by the operator.
    * @param options - `force: true` re-posts past an overlap conflict.
    * @returns The 201 acceptance envelope.
-   * @throws The raw fetch error; pass it through {@link toRejection}.
+   * @throws A status/detail transport error; pass it through {@link toRejection}.
    */
   async function uploadCapture(file: File, options?: UploadCaptureOptions): Promise<PcapImportAccepted> {
-    const form = new FormData()
-    // The API identifies the capture part by the presence of a filename in
-    // its Content-Disposition, not by the field name.
-    form.append('file', file, file.name)
-    if (options?.force) {
-      form.append('force', 'true')
-    }
-    // No explicit Content-Type: the browser must set the multipart boundary.
-    return await $fetch<PcapImportAccepted>(BASE_URL, {
-      method: 'POST',
-      body: form,
-      ...(options?.signal ? { signal: options.signal } : {}),
+    return await new Promise<PcapImportAccepted>((resolve, reject) => {
+      let xhr: XMLHttpRequest | null = null
+      let settled = false
+      let observed: PcapImportAccepted | null = null
+      const detach: (() => void)[] = []
+
+      function cleanup(): void {
+        for (const remove of detach) remove()
+        detach.length = 0
+      }
+
+      function succeed(envelope: PcapImportAccepted): void {
+        if (settled) return
+        settled = true
+        cleanup()
+        resolve(envelope)
+      }
+
+      function fail(message: string, status = 0, data?: unknown, name = 'Error'): void {
+        if (settled) return
+        settled = true
+        cleanup()
+        reject(
+          Object.assign(new Error(message), {
+            name,
+            status,
+            data,
+            acceptanceUncertain: status === 0 || (status >= 200 && status < 300) || status >= 500,
+            ...(observed ? { display_id: observed.display_id, accepted: observed } : {}),
+          }),
+        )
+      }
+
+      // Only a complete response envelope proves identity. Partial JSON, a
+      // filename, and a history candidate cannot become cancellation authority.
+      function isAcceptance(value: unknown): value is PcapImportAccepted {
+        if (!isRecord(value)) return false
+        const nullableString = (field: unknown) => field === null || typeof field === 'string'
+        return (
+          typeof value.display_id === 'string' &&
+          value.display_id.length > 0 &&
+          Number.isInteger(value.job_id) &&
+          [...PCAP_IMPORT_TERMINAL_STATES, 'queued', 'running', 'cancelling'].includes(
+            value.state as PcapImportState,
+          ) &&
+          typeof value.filename === 'string' &&
+          nullableString(value.original_filename) &&
+          typeof value.size_bytes === 'number' &&
+          Number.isFinite(value.size_bytes) &&
+          value.size_bytes >= 0 &&
+          typeof value.sha256 === 'string' &&
+          nullableString(value.time_start) &&
+          nullableString(value.time_end) &&
+          typeof value.forced === 'boolean' &&
+          typeof value.delivered === 'boolean'
+        )
+      }
+
+      function observeAcceptance(): void {
+        if (settled || !xhr || xhr.readyState !== 4 || xhr.status < 200 || xhr.status >= 300) return
+        try {
+          const body: unknown = JSON.parse(xhr.responseText)
+          if (isAcceptance(body)) observed = body
+        } catch {
+          // An incomplete or opaque response leaves acceptance unverified.
+        }
+      }
+
+      function onLoad(): void {
+        if (settled || !xhr) return
+        const status = xhr.status
+        if (status === 0) {
+          fail('Upload response was lost; server acceptance is unverified.')
+          return
+        }
+        let data: unknown
+        try {
+          data = JSON.parse(xhr.responseText)
+        } catch {
+          data = undefined
+        }
+        if (status >= 200 && status < 300) {
+          if (isAcceptance(data)) succeed(data)
+          else fail('Upload response is incomplete or unreadable; server acceptance is unverified.', status, data)
+          return
+        }
+        const message =
+          isRecord(data) && typeof data.message === 'string' && data.message.length > 0
+            ? data.message
+            : xhr.responseText || `HTTP ${status}${xhr.statusText ? ` ${xhr.statusText}` : ''}`
+        fail(message, status, data)
+      }
+
+      function onProgress(event: ProgressEvent): void {
+        if (settled) return
+        const loaded =
+          typeof event.loaded === 'number' && Number.isFinite(event.loaded) && event.loaded >= 0 ? event.loaded : null
+        const total =
+          event.lengthComputable === true &&
+          loaded !== null &&
+          typeof event.total === 'number' &&
+          Number.isFinite(event.total) &&
+          event.total > 0 &&
+          loaded <= event.total
+            ? event.total
+            : null
+        options?.onUploadProgress?.({ loaded, total })
+      }
+
+      function onAbort(): void {
+        if (settled) return
+        observeAcceptance()
+        if (observed) succeed(observed)
+        else fail('Upload aborted; server acceptance is unverified.', 0, undefined, 'AbortError')
+      }
+
+      function onSignalAbort(): void {
+        if (settled) return
+        // Snapshot before abort(), which normally clears status/responseText.
+        // The store, not the transport, owns any exact-ID server cancellation.
+        onAbort()
+        xhr?.abort()
+      }
+
+      function onError(): void {
+        observeAcceptance()
+        fail('Upload network response failed; server acceptance is unverified.')
+      }
+
+      function onTimeout(): void {
+        observeAcceptance()
+        fail('Upload timed out; server acceptance is unverified.')
+      }
+
+      function onLoadEnd(): void {
+        if (settled) return
+        if (xhr?.readyState === 4 && xhr.status !== 0) onLoad()
+        else fail('Upload ended without a response; server acceptance is unverified.')
+      }
+
+      function listen(target: EventTarget, type: string, listener: EventListener): void {
+        target.addEventListener(type, listener)
+        detach.push(() => target.removeEventListener(type, listener))
+      }
+
+      try {
+        if (options?.signal?.aborted) {
+          onAbort()
+          return
+        }
+        xhr = new XMLHttpRequest()
+        listen(xhr, 'readystatechange', observeAcceptance)
+        listen(xhr, 'load', onLoad)
+        listen(xhr, 'error', onError)
+        listen(xhr, 'timeout', onTimeout)
+        listen(xhr, 'abort', onAbort)
+        listen(xhr, 'loadend', onLoadEnd)
+        listen(xhr.upload, 'progress', onProgress as EventListener)
+        if (options?.signal) listen(options.signal, 'abort', onSignalAbort)
+        xhr.open('POST', BASE_URL, true)
+        const form = new FormData()
+        form.append('file', file, file.name)
+        if (options?.force === true) form.append('force', 'true')
+        // Same-origin cookies are automatic. No browser key or manual boundary.
+        if (options?.signal?.aborted) onSignalAbort()
+        if (!settled) xhr.send(form)
+      } catch (error: unknown) {
+        const reason = error instanceof Error ? error.message : 'Transport initialization failed'
+        fail(`${reason}; server acceptance is unverified.`)
+        xhr?.abort()
+      }
     })
   }
 

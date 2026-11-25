@@ -12,6 +12,7 @@
  */
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { installPcapUploadXHR } from '../mocks/pcapUploadXhr'
 
 import { importRange, useDataSourcesStore } from '~/stores/dataSourcesStore'
 import type { PcapImportStatus } from '~/composables/usePcapImport'
@@ -81,6 +82,13 @@ beforeEach(() => {
   setActivePinia(createPinia())
   calls = []
   responder = () => ({})
+  installPcapUploadXHR((url, options) => {
+    calls.push({ url, options })
+    const result = responder(url, options)
+    if (result instanceof Error || (result && typeof result === 'object' && 'status' in result && '__throw' in result))
+      throw result
+    return result
+  })
   vi.stubGlobal('$fetch', async (url: string, options: Record<string, unknown> = {}) => {
     calls.push({ url, options })
     const result = responder(url, options)

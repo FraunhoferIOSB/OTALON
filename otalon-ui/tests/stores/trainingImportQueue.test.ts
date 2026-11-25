@@ -1,5 +1,6 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { installPcapUploadXHR, PcapUploadXHR } from '../mocks/pcapUploadXhr'
 
 import {
   usePcapImport,
@@ -128,6 +129,10 @@ beforeEach(() => {
     jobs.set(id, value)
     return value
   }
+  installPcapUploadXHR((url, options) => {
+    calls.push({ url, options, at: Date.now() })
+    return upload(options.body.get('file') as File, options)
+  })
   vi.stubGlobal('$fetch', async (url: string, options: Options = {}) => {
     calls.push({ url, options, at: Date.now() })
     if (url === BASE && options.method === 'POST') return upload(options.body?.get('file') as File, options)
@@ -487,7 +492,7 @@ describe('training import queue', () => {
     await flush()
     const row = store.importQueue[0]!
     await store.cancelQueueImport(row.localId)
-    expect(posts()[0]?.options.signal?.aborted).toBe(true)
+    expect(PcapUploadXHR.instances[0]?.abortCount).toBe(1)
     expect(row.uploadState).toBe('uncertain')
     expect(row.file).not.toBeNull()
     store.stopImportQueue()
@@ -538,8 +543,9 @@ describe('training import queue', () => {
     upload = () => held.promise
     store.enqueueImports([file('A'), file('B')])
     await flush()
-    await store.cancelQueueImport(store.importQueue[0]!.localId)
     jobs.set('real-owner', status('real-owner'))
+    PcapUploadXHR.instances[0]!.observe(201, accepted('real-owner'))
+    await store.cancelQueueImport(store.importQueue[0]!.localId)
     held.resolve(accepted('real-owner'))
     await flush()
     expect(calls.filter((c) => c.url.endsWith('/cancel')).map((c) => c.url)).toEqual([`${BASE}/real-owner/cancel`])
@@ -565,11 +571,13 @@ describe('training import queue', () => {
   })
 
   it('Q25 possible-acceptance failure with a genuinely observed ID reconciles only that identity', async () => {
-    upload = async () => {
-      jobs.set('observed', status('observed'))
-      throw { status: 502, display_id: 'observed', message: 'response interrupted after identity was observed' }
-    }
+    const held = deferred<PcapImportAccepted>()
+    upload = () => held.promise
     store.enqueueImports([file('A'), file('B')])
+    await flush()
+    jobs.set('observed', status('observed'))
+    PcapUploadXHR.instances[0]!.observe(201, accepted('observed'))
+    PcapUploadXHR.instances[0]!.failNetwork()
     await flush()
     await advance()
     expect(reads('observed').length).toBeGreaterThan(0)

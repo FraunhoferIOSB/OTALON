@@ -13,6 +13,7 @@
  *    `[object Object]` instead of the conflict range.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { installPcapUploadXHR } from '../mocks/pcapUploadXhr'
 
 import {
   parseConflictDetail,
@@ -35,6 +36,23 @@ beforeEach(() => {
   calls = []
   nextResponse = {}
   nextError = null
+  installPcapUploadXHR((url, options) => {
+    calls.push({ url, options })
+    if (nextError) throw nextError
+    return {
+      display_id: 'J-fixture',
+      job_id: 1,
+      state: 'queued',
+      filename: 'stored.pcap',
+      original_filename: 'kunde.pcap',
+      size_bytes: 2048,
+      sha256: 'a'.repeat(64),
+      time_start: null,
+      time_end: null,
+      forced: false,
+      delivered: false,
+    }
+  })
   vi.stubGlobal('$fetch', async (url: string, options: Record<string, unknown> = {}) => {
     calls.push({ url, options })
     if (nextError) throw nextError
