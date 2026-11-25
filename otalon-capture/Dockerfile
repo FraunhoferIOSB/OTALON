@@ -88,8 +88,8 @@ RUN groupadd -g 10006 pcapuser \
 #
 # The previous per-module COPY block listed every package and loose module
 # under src/ by name. A new top-level module then never reached the image and
-# nothing turned red: host-side pytest puts src/ on sys.path via
-# `pythonpath = ["src"]` and stayed green. That is exactly how
+# nothing turned red: capture tests/conftest.py supplies host source paths,
+# so host-side imports do not prove the image COPY contract. That is how
 # src/capture_settings_base.py (SUITE-038 79ca8dd, extended in PCAP-007
 # 9d62bbf) slipped through — BOTH containers built from this image crash-looped
 # on the first full rebuild with ModuleNotFoundError.
@@ -147,10 +147,10 @@ EXPOSE 9090 9092
 # NET-006 / NET-007: the image declares its own import-smoke contract.
 #
 # Every module named here must be importable inside the BUILT image — that is
-# the check host-side pytest cannot make. All three are entrypoint modules of
-# this one image: pcap_recorder.main is the default coordinator and owns the
-# otalon_capture.main LIVE child; pcap_import.main is
-# what otalon-capture-pcap-import selects via NETCAP_ENTRYPOINT_MODULES.
+# the check host-side pytest cannot make. All three are runtime modules of
+# this one image: pcap_recorder.main is the default plain coordinator and owns
+# the otalon_capture.main child only in LIVE. The independent pcap_import.main
+# worker override is selected via NETCAP_ENTRYPOINT_MODULES before intent gating.
 #
 # NET-007 reads this label to drive a suite-wide smoke without hard-coding a
 # per-service module list:

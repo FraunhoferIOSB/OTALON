@@ -109,6 +109,8 @@ services:
       - all
     restart: unless-stopped
 
+  # Base deployment selects native in NONE and LIVE. Plain coordinator gates
+  # automatic acquisition; NONE retains idle REST without changing base caps.
   otalon-capture:
     build:
       context: .
@@ -155,8 +157,8 @@ services:
   #
   # Deliberate deviations from its sibling `otalon-capture` above:
   #
-  #   * NO `network_mode: host`, NO NET_RAW/NET_ADMIN. The live adapter needs
-  #     both because it captures raw frames off the physical NIC `enp5s0`.
+  #   * NO `network_mode: host`, NO NET_RAW/NET_ADMIN. Native LIVE acquisition
+  #     uses both for its explicitly configured authorized physical interface.
   #     This worker only ever opens a file that the api already wrote into the
   #     shared import volume, so it needs neither a raw socket nor the host
   #     netns. Staying on the default bridge is what makes service-name DNS
@@ -175,23 +177,17 @@ services:
       context: .
       dockerfile: otalon-capture/Dockerfile
     container_name: otalon-capture-pcap-import
-    # SUITE-042 wave 3: the image ENTRYPOINT uses python3-cap (a
-    # capability-bearing interpreter copy) for the live-capture service.
-    # This worker has no cap_add and needs no raw access, and a setcap
-    # binary refuses to exec without the matching capability — so it
-    # runs the plain interpreter instead.
+    # The shared image uses a plain Python coordinator. This independent worker
+    # also uses plain Python without raw access; only native LIVE's adapter
+    # child uses the capability-bearing interpreter copy.
     entrypoint: ["python", "-u", "/app/entrypoint.py"]
     env_file:
       - .env.compose
     environment:
-      # Module selection for the shared image's entrypoint
-      # (otalon-capture/entrypoint.py:14). Without this variable the
-      # entrypoint starts its default set — otalon-capture.main +
-      # pcap_recorder.main — which in a SECOND container would mean a second
-      # live capture writing the same `network_metrics` measurement. This
-      # belongs in the compose `environment:` block and NOT in `.env.compose`:
-      # the env file is shared by every service, so putting it there would
-      # silently disarm the live adapter's own capture.
+      # Select the worker before the automatic capture gate. Without this
+      # override the default recorder coordinator owns LIVE acquisition, not
+      # two independently launched adapters. Keep selection service-local,
+      # never in the shared env file, so imports stay independent in NONE/LIVE.
       NETCAP_ENTRYPOINT_MODULES: pcap_import.main
     depends_on:
       # The import writes points, so InfluxDB should exist first.
