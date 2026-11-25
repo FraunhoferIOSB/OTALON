@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import os
 import signal
 import sys
@@ -15,6 +14,8 @@ import uvicorn
 from dotenv import load_dotenv
 from loguru import logger
 from otalon_common.logging import configure_logging
+
+from capture_runtime import CaptureIntent, resolve_capture_intent
 
 from .api import CaptureStatusProvider, PcapService, create_app
 from .capture_stats import CaptureLossMonitor
@@ -37,25 +38,53 @@ class RuntimeState:
         self.uvicorn_server: Optional[uvicorn.Server] = None
         self.ringbuffer_task: Optional[asyncio.Task[None]] = None
         self.capture_stats_task: Optional[asyncio.Task[None]] = None
+        self.acquisition = None
+        self.acquisition_task: Optional[asyncio.Task[None]] = None
+        self.http_task: Optional[asyncio.Task[None]] = None
+        self._stop_task: Optional[asyncio.Task[None]] = None
+
+    @property
+    def interface(self) -> str:
+        return self.recorder.interface if self.recorder is not None else ""
+
+    @property
+    def is_running(self) -> bool:
+        return self.recorder is not None and self.recorder.is_running
 
     async def stop(self) -> None:
-        """Gracefully shut down all managed components."""
+        """Idempotent eight-second teardown inside the outer ten-second grace."""
         self.running = False
-        if self.recorder:
-            self.recorder.stop()
-        if self.uvicorn_server:
-            if getattr(self.uvicorn_server, "started", False):
-                await self.uvicorn_server.shutdown()
-            else:
-                logger.warning("Uvicorn server was never fully started; skipping shutdown().")
-        if self.ringbuffer_task:
-            self.ringbuffer_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self.ringbuffer_task
-        if self.capture_stats_task:
-            self.capture_stats_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self.capture_stats_task
+        if self._stop_task is None:
+            self._stop_task = asyncio.create_task(self._shutdown())
+        await asyncio.shield(self._stop_task)
+
+    async def _shutdown(self) -> None:
+        async def cleanup() -> None:
+            if self.uvicorn_server is not None:
+                self.uvicorn_server.should_exit = True
+            tasks = [task for task in (self.ringbuffer_task, self.capture_stats_task) if task]
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            if self.acquisition is not None:
+                await self.acquisition.stop()
+            if self.acquisition_task is not None:
+                await asyncio.gather(self.acquisition_task, return_exceptions=True)
+            if self.http_task is not None:
+                await asyncio.gather(self.http_task, return_exceptions=True)
+
+        try:
+            await asyncio.wait_for(cleanup(), timeout=8.0)
+        except asyncio.TimeoutError:
+            logger.warning("Coordinator shutdown reached its eight-second deadline.")
+            if self.http_task is not None:
+                self.http_task.cancel()
+                await asyncio.gather(self.http_task, return_exceptions=True)
+            if self.acquisition_task is not None:
+                self.acquisition_task.cancel()
+                await asyncio.gather(self.acquisition_task, return_exceptions=True)
+        finally:
+            self.recorder = None
 
 
 async def _run_uvicorn(app, host: str, port: int, state: RuntimeState) -> None:
@@ -67,6 +96,8 @@ async def _run_uvicorn(app, host: str, port: int, state: RuntimeState) -> None:
         await server.serve()
     except SystemExit as exc:
         logger.error("Uvicorn exited with code {code} (port {port} likely in use).", code=exc.code, port=port)
+        state.running = False
+    finally:
         state.running = False
 
 
@@ -142,20 +173,11 @@ def main() -> None:
     # so it cannot itself come from that file. Sanctioned by the raw
     # os.environ rule in .kilo/agent/backend.md.
     config_path = Path(os.environ.get("PCAP_CONFIG_FILE", "config/config_pcap.json"))
-    settings = PcapRecorderSettings.from_json(config_path)
+    intent = resolve_capture_intent()
+    settings = PcapRecorderSettings.from_json_for_intent(config_path, intent)
     _configure_logging(settings.log)
 
-    recorder = TcpdumpRecorder(settings.pcap)
-    index_file = Path(settings.pcap.ringbuffer.directory) / "pcap_index.json"
-    chunk_duration = timedelta(seconds=settings.pcap.chunk_duration_sec)
-    index = PcapIndex(index_file, chunk_duration=chunk_duration)
-    ringbuffer = RingbufferManager(settings.pcap.ringbuffer, settings.pcap.archive, index)
-    service = PcapService(index, ringbuffer, api_config=settings.api)
-    status_provider = CaptureStatusProvider(recorder)
-    app = create_app(service, status_provider=status_provider)
-
     runtime_state = RuntimeState()
-    runtime_state.recorder = recorder
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -167,19 +189,50 @@ def main() -> None:
     signal.signal(signal.SIGINT, handle_signal)
     signal.signal(signal.SIGTERM, handle_signal)
 
-    capture_monitor = CaptureLossMonitor(settings.pcap.interface)
-
-    async def runner() -> None:
-        recorder.start()
-        runtime_state.ringbuffer_task = asyncio.create_task(_ringbuffer_loop(runtime_state, ringbuffer))
-        runtime_state.capture_stats_task = asyncio.create_task(_capture_stats_loop(runtime_state, capture_monitor))
-        await _run_uvicorn(app, settings.api.host, settings.api.port, runtime_state)
-
     try:
-        loop.run_until_complete(runner())
+        loop.run_until_complete(_run_service(settings, intent, runtime_state))
     finally:
         loop.run_until_complete(runtime_state.stop())
         loop.close()
+
+
+async def _run_service(settings: PcapRecorderSettings, intent: CaptureIntent, state: RuntimeState) -> None:
+    """Serve retained evidence first; only the LIVE coordinator owns producers."""
+    index_file = Path(settings.pcap.ringbuffer.directory) / "pcap_index.json"
+    index = PcapIndex(index_file, chunk_duration=timedelta(seconds=settings.pcap.chunk_duration_sec), auto_write=False)
+    ringbuffer = RingbufferManager(settings.pcap.ringbuffer, settings.pcap.archive, index, auto_write=False)
+    service = PcapService(index, ringbuffer, api_config=settings.api)
+    app = create_app(service, status_provider=CaptureStatusProvider(state))
+    state.http_task = asyncio.create_task(_run_uvicorn(app, settings.api.host, settings.api.port, state))
+
+    async def acquire() -> None:
+        try:
+            if await state.acquisition.start():
+                state.recorder = state.acquisition.recorder
+                monitor = CaptureLossMonitor(settings.pcap.interface)
+                state.ringbuffer_task = asyncio.create_task(_ringbuffer_loop(state, ringbuffer))
+                state.capture_stats_task = asyncio.create_task(_capture_stats_loop(state, monitor))
+                await state.acquisition.run()
+        finally:
+            state.recorder = None
+            for task in (state.ringbuffer_task, state.capture_stats_task):
+                if task is not None:
+                    task.cancel()
+            await state.acquisition.stop()
+
+    try:
+        while state.running and not state.http_task.done():
+            if state.uvicorn_server is not None and state.uvicorn_server.started:
+                if intent is CaptureIntent.LIVE:
+                    from .lifecycle import AcquisitionPair
+
+                    state.acquisition = AcquisitionPair(settings.pcap)
+                    state.acquisition_task = asyncio.create_task(acquire())
+                break
+            await asyncio.sleep(0.01)
+        await state.http_task
+    finally:
+        await state.stop()
 
 
 if __name__ == "__main__":

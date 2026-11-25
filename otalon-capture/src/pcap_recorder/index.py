@@ -35,10 +35,12 @@ class PcapIndex:
     """Maintain a persisted registry of ringbuffer chunks."""
 
     def __init__(
-        self, index_file: Path, chunk_duration: timedelta = DEFAULT_CHUNK_DURATION
+        self, index_file: Path, chunk_duration: timedelta = DEFAULT_CHUNK_DURATION, *, auto_write: bool = True
     ) -> None:
         self._index_file = index_file
-        self._index_file.parent.mkdir(parents=True, exist_ok=True)
+        self._auto_write = auto_write
+        if auto_write:
+            self._index_file.parent.mkdir(parents=True, exist_ok=True)
         self._chunk_duration = chunk_duration
         self._entries: Dict[str, PcapChunkMeta] = {}
         self._defer_depth = 0
@@ -109,9 +111,7 @@ class PcapIndex:
             self._persist()
         return meta
 
-    def mark_anomaly(
-        self, chunk_ids: Iterable[str], labels: Optional[Dict[str, str]] = None
-    ) -> List[PcapChunkMeta]:
+    def mark_anomaly(self, chunk_ids: Iterable[str], labels: Optional[Dict[str, str]] = None) -> List[PcapChunkMeta]:
         """Flag selected chunks as anomaly and attach labels."""
 
         labels = labels or {}
@@ -170,6 +170,8 @@ class PcapIndex:
             with self._index_file.open("r", encoding="utf-8") as handle:
                 raw_entries = json.load(handle)
         except json.JSONDecodeError as error:
+            if not self._auto_write:
+                raise ValueError("Corrupt retained PCAP index; automatic repair is disabled.") from error
             self._quarantine_corrupt_index(error)
             return
         for entry in raw_entries:
@@ -222,6 +224,8 @@ class PcapIndex:
         consistent with the entries it describes.
         """
         with self._lock:
+            # Explicit authenticated pinning may write even after idle startup.
+            self._index_file.parent.mkdir(parents=True, exist_ok=True)
             self._dirty = False
             serializable = [
                 {

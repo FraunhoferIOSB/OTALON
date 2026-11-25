@@ -123,15 +123,22 @@ class TcpdumpRecorder:
             if self._process is None:
                 return
             logger.info("Stopping tcpdump recorder.")
-            self._process.terminate()
             try:
+                if self._process.poll() is None:
+                    try:
+                        self._process.terminate()
+                    except ProcessLookupError:
+                        pass
                 self._process.wait(timeout=timeout_s)
             except subprocess.TimeoutExpired:
                 logger.warning(
                     "tcpdump did not exit within {timeout}s. Sending SIGKILL.",
                     timeout=timeout_s,
                 )
-                self._process.kill()
+                try:
+                    self._process.kill()
+                except ProcessLookupError:
+                    pass
                 self._process.wait(timeout=timeout_s)
             finally:
                 # PCAP-014: the drain thread ends at pipe EOF once the child

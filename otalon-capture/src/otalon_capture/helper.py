@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import time
+from threading import Event
 from typing import Dict
 from urllib import error, request
 
@@ -40,6 +41,8 @@ def wait_for_influx_health(
     timeout_s: float = 5.0,
     max_wait_s: float = 30.0,
     backoff_s: float = 2.0,
+    *,
+    stop_event: Event | None = None,
 ) -> bool:
     """Poll the InfluxDB health endpoint until available or timeout expires."""
 
@@ -48,23 +51,26 @@ def wait_for_influx_health(
         return False
 
     health_url = base_url.rstrip("/") + "/health"
-    start = time.time()
+    start = time.monotonic() if stop_event is not None else time.time()
+    now = time.monotonic if stop_event is not None else time.time
     attempt = 0
-    while (time.time() - start) < max_wait_s:
+    while (now() - start) < max_wait_s:
+        if stop_event is not None and stop_event.is_set():
+            return False
         attempt += 1
         try:
             headers = _build_auth_header(token)
             logger.debug("Checking InfluxDB health (attempt {attempt}): {url}", attempt=attempt, url=health_url)
             req = request.Request(health_url, headers=headers)
-            with request.urlopen(req, timeout=timeout_s) as response:
+            remaining = max_wait_s - (now() - start)
+            request_timeout = min(timeout_s, remaining) if stop_event is not None else timeout_s
+            with request.urlopen(req, timeout=request_timeout) as response:
                 status = getattr(response, "status", 200)
                 if 200 <= status < 300:
                     logger.info("InfluxDB health OK (HTTP {status}). Proceeding.", status=status)
                     return True
                 if status == 401:
-                    logger.info(
-                        "InfluxDB health endpoint responded 401 Unauthorized; treating as UP and proceeding."
-                    )
+                    logger.info("InfluxDB health endpoint responded 401 Unauthorized; treating as UP and proceeding.")
                     return True
                 logger.warning(
                     "InfluxDB health not OK (HTTP {status}). Retrying in {backoff}s...",
@@ -73,9 +79,7 @@ def wait_for_influx_health(
                 )
         except error.HTTPError as http_error:
             if http_error.code == 401:
-                logger.info(
-                    "InfluxDB health endpoint responded 401 Unauthorized; treating as UP and proceeding."
-                )
+                logger.info("InfluxDB health endpoint responded 401 Unauthorized; treating as UP and proceeding.")
                 return True
             logger.warning(
                 "InfluxDB health HTTP error: {error}. Retrying in {backoff}s...",
@@ -94,9 +98,16 @@ def wait_for_influx_health(
                 error=unexpected_error,
                 backoff=backoff_s,
             )
-        time.sleep(backoff_s)
+        if stop_event is not None:
+            remaining = max(0.0, max_wait_s - (now() - start))
+            if stop_event.wait(min(backoff_s, remaining)):
+                return False
+        else:
+            time.sleep(backoff_s)
 
-    logger.error("InfluxDB healthcheck timed out after {timeout}s. Continuing startup, writes may retry.", timeout=max_wait_s)
+    logger.error(
+        "InfluxDB healthcheck timed out after {timeout}s. Continuing startup, writes may retry.", timeout=max_wait_s
+    )
     return False
 
 

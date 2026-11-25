@@ -132,6 +132,10 @@ RUN mkdir -p logs /app/pcap/buffer /app/pcap/archive \
 # plain `python` via ENTRYPOINT. Verified: tcpdump and python3-cap both work
 # as uid 10006 with cap_add, both refuse without it, and the import worker's
 # plain python still execs normally.
+# Historical inspection must also exec with cap_drop ALL/no-new-privileges.
+# Do not preserve xattrs from the acquisition executable.
+RUN cp --no-preserve=xattr "$(readlink -f "$(command -v tcpdump)")" /usr/local/bin/tcpdump-read \
+ && chmod 0755 /usr/local/bin/tcpdump-read
 RUN setcap cap_net_raw,cap_net_admin+eip "$(readlink -f "$(command -v tcpdump)")" \
  && cp "$(readlink -f "$(command -v python3)")" /usr/local/bin/python3-cap \
  && setcap cap_net_raw,cap_net_admin+eip /usr/local/bin/python3-cap
@@ -144,8 +148,8 @@ EXPOSE 9090 9092
 #
 # Every module named here must be importable inside the BUILT image — that is
 # the check host-side pytest cannot make. All three are entrypoint modules of
-# this one image: otalon_capture.main + pcap_recorder.main are the live
-# adapter's default set (entrypoint.py DEFAULT_MODULES), pcap_import.main is
+# this one image: pcap_recorder.main is the default coordinator and owns the
+# otalon_capture.main LIVE child; pcap_import.main is
 # what otalon-capture-pcap-import selects via NETCAP_ENTRYPOINT_MODULES.
 #
 # NET-007 reads this label to drive a suite-wide smoke without hard-coding a
@@ -154,10 +158,8 @@ EXPOSE 9090 9092
 #   mods=$(docker inspect -f '{{index .Config.Labels "otalon.smoke.modules"}}' <img>)
 #   docker run --rm --entrypoint python <img> -c "import ${mods}"
 #
-# --entrypoint python is REQUIRED for this image: the default entrypoint is
-# python3-cap, a setcap copy of the interpreter that refuses to exec without
-# the matching cap_add ("operation not permitted"), which would make the smoke
-# fail for a reason that has nothing to do with module drift.
+# --entrypoint python selects the import smoke instead of running the plain
+# Python service coordinator. Acquisition capabilities are needed only in LIVE.
 LABEL otalon.smoke.modules="otalon_capture.main, pcap_recorder.main, pcap_import.main"
 
 # No compose-level healthcheck exists for otalon-capture (SUITE-041 / HC5).
@@ -173,8 +175,6 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
 
 USER pcapuser
 
-# python3-cap: the live-capture service needs NET_RAW in-process (netcap++).
-# otalon-capture-pcap-import overrides this in docker-compose.yml with plain
-# `python`, since it has no cap_add and needs no raw access.
-ENTRYPOINT ["python3-cap","-u","/app/entrypoint.py"]
+# Plain bootstrap gates intent before the coordinator owns any LIVE child.
+ENTRYPOINT ["python","-u","/app/entrypoint.py"]
 CMD []

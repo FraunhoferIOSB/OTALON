@@ -21,14 +21,17 @@ class RingbufferManager:
         ringbuffer_config: RingbufferConfig,
         archive_config: ArchiveConfig,
         index: PcapIndex,
+        *,
+        auto_write: bool = True,
     ) -> None:
         self._ringbuffer_config = ringbuffer_config
         self._archive_config = archive_config
         self._index = index
         self._ringbuffer_path = Path(ringbuffer_config.directory)
         self._archive_path = Path(archive_config.directory)
-        self._ringbuffer_path.mkdir(parents=True, exist_ok=True)
-        self._archive_path.mkdir(parents=True, exist_ok=True)
+        if auto_write:
+            self._ringbuffer_path.mkdir(parents=True, exist_ok=True)
+            self._archive_path.mkdir(parents=True, exist_ok=True)
 
     def scan_for_new_chunks(self) -> List[PcapChunkMeta]:
         """Discover files in the ringbuffer directory and index new ones."""
@@ -148,6 +151,7 @@ class RingbufferManager:
                 continue
             target_path = self._archive_path / meta.filename
             try:
+                self._archive_path.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(meta.path), target_path)
                 meta.path = target_path
                 meta.is_anomaly = True

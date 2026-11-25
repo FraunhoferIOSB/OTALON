@@ -6,10 +6,9 @@ from asyncio.subprocess import Process
 from dataclasses import dataclass
 from typing import List
 
-DEFAULT_MODULES = (
-    "otalon_capture.main",
-    "pcap_recorder.main",
-)
+from capture_runtime import CaptureIntent, resolve_capture_intent
+
+DEFAULT_MODULES = ("pcap_recorder.main",)
 
 MODULES_ENV_VAR = "NETCAP_ENTRYPOINT_MODULES"
 
@@ -17,7 +16,7 @@ MODULES_ENV_VAR = "NETCAP_ENTRYPOINT_MODULES"
 def _resolve_modules() -> List[str]:
     """Return the modules to supervise, honouring an environment override.
 
-    The live adapter container runs the capture adapter plus the PCAP recorder.
+    The native container runs the recorder coordinator, which owns LIVE children.
     The PCAP import worker is a separate container that shares this image, so it
     sets ``NETCAP_ENTRYPOINT_MODULES=pcap_import.main`` to run only itself.
 
@@ -59,7 +58,13 @@ class EntryPoint:
                 await proc.wait()
 
     async def _run(self) -> int:
-        for module in _resolve_modules():
+        modules = _resolve_modules()
+        # Worker and unrelated explicit overrides stay independent of boot intent.
+        if any(module in {"pcap_recorder.main", "otalon_capture.main"} for module in modules):
+            intent = resolve_capture_intent()
+            if "otalon_capture.main" in modules and intent is not CaptureIntent.LIVE:
+                raise ValueError("CAPTURE_TYPE must be LIVE for the acquisition adapter.")
+        for module in modules:
             runtime_proc = await self._start_module(module)
             self.processes.append(runtime_proc)
 

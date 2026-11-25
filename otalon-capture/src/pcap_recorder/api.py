@@ -22,13 +22,15 @@ from typing import (
     runtime_checkable,
 )
 
-from capture_settings_base import OperatorAuthSettings, encode_api_key
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi import Path as PathParam
+from fastapi import Query, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from loguru import logger
 from pydantic import BaseModel
 from starlette.status import HTTP_404_NOT_FOUND
+
+from capture_settings_base import OperatorAuthSettings, encode_api_key
 
 from .index import PcapChunkMeta, PcapIndex
 from .ringbuffer import RingbufferManager
@@ -224,7 +226,7 @@ class PcapService:
 def _tcpdump_read_text(pcap_path: Path, timeout_s: int = DEFAULT_SUBPROCESS_TIMEOUT_S) -> str:
     """Run ``tcpdump -r`` on a PCAP file and return the human-readable output."""
 
-    command = ["tcpdump", "-r", str(pcap_path), "-q", "-tttt", "-n"]
+    command = ["/usr/local/bin/tcpdump-read", "-r", str(pcap_path), "-q", "-tttt", "-n"]
     try:
         result = subprocess.run(
             command,
