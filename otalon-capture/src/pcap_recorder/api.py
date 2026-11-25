@@ -6,6 +6,7 @@ import os
 import pwd
 import re
 import subprocess
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import (
@@ -27,9 +28,10 @@ from fastapi import Path as PathParam
 from fastapi import Query, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from loguru import logger
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from starlette.status import HTTP_404_NOT_FOUND
 
+from capture_runtime import CaptureBackend, CaptureIntent, CaptureSnapshot, ReasonCode, SourceState
 from capture_settings_base import OperatorAuthSettings, encode_api_key
 
 from .index import PcapChunkMeta, PcapIndex
@@ -76,7 +78,7 @@ class RecorderLike(Protocol):
 class CaptureStatusResponse(BaseModel):
     """Read-only capture status snapshot for downstream consumers.
 
-    Every field is nullable so the recorder never fabricates a value it
+    Legacy fields are nullable so the recorder never fabricates a value it
     cannot source truthfully. ``recording`` reflects the live subprocess
     poll, ``interface`` comes from recorder config, and ``link_up`` is the
     host carrier state read from ``operstate`` (``None`` when unknown).
@@ -89,6 +91,24 @@ class CaptureStatusResponse(BaseModel):
     recording: Optional[bool] = None
     drops_24h_pct: Optional[float] = None
     overflows: Optional[int] = None
+
+    capture_type: CaptureIntent | None = None
+    backend: CaptureBackend | None = None
+    source_state: SourceState = SourceState.DEGRADED
+    reason_code: ReasonCode | None = None
+    retry_attempt: int | None = None
+    retry_limit: int | None = None
+    retry_in_seconds: float | None = None
+    retry_exhausted: bool | None = None
+    observation_age_seconds: float | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_snapshot(cls, values):
+        if isinstance(values, dict):
+            # Validate before Pydantic can coerce booleans or strings to numbers.
+            CaptureSnapshot(**{name: values[name] for name in CaptureSnapshot.__dataclass_fields__ if name in values})
+        return values
 
 
 def _read_link_up(interface: Optional[str]) -> Optional[bool]:
@@ -140,7 +160,7 @@ class CaptureStatusProvider:
     via sysfs. It never starts, stops or reconfigures capture.
     """
 
-    def __init__(self, recorder: RecorderLike) -> None:
+    def __init__(self, recorder: RecorderLike, *, snapshot: Callable[[], CaptureSnapshot] | None = None) -> None:
         """Store the read-only recorder view.
 
         Args:
@@ -148,6 +168,7 @@ class CaptureStatusProvider:
         """
 
         self._recorder = recorder
+        self._snapshot = snapshot
 
     def get_status(self) -> CaptureStatusResponse:
         """Return the current capture status snapshot.
@@ -158,13 +179,17 @@ class CaptureStatusProvider:
             truthful counter source today.
         """
 
+        snapshot = self._snapshot() if self._snapshot is not None else CaptureSnapshot()
+        if snapshot.capture_type is CaptureIntent.NONE and snapshot.backend is CaptureBackend.NATIVE:
+            return CaptureStatusResponse(recording=False, **asdict(snapshot))
         interface = self._recorder.interface or None
         return CaptureStatusResponse(
             interface=interface,
-            link_up=_read_link_up(interface),
+            link_up=_read_link_up(interface) if interface is not None else None,
             recording=bool(self._recorder.is_running),
             drops_24h_pct=None,
             overflows=None,
+            **asdict(snapshot),
         )
 
 

@@ -147,9 +147,21 @@ def test_main_none_before_key_settings_ledger_and_network_import(tmp_path, monke
     def serve(app, **kwargs):
         with TestClient(app) as client:
             assert client.get("/health").json() == {"status": "ok"}
-            assert client.get("/status").json() == dict.fromkeys(
-                ["interface", "link_up", "recording", "drops_24h_pct", "overflows"]
-            )
+            status = client.get("/status").json()
+            legacy_fields = ["interface", "link_up", "recording", "drops_24h_pct", "overflows"]
+            assert {name: status[name] for name in legacy_fields} == dict.fromkeys(legacy_fields)
+            assert status == {
+                **dict.fromkeys(legacy_fields),
+                "capture_type": "NONE",
+                "backend": "wsl",
+                "source_state": "disabled",
+                "reason_code": "none_selected",
+                "retry_attempt": 0,
+                "retry_limit": 5,
+                "retry_in_seconds": None,
+                "retry_exhausted": False,
+                "observation_age_seconds": None,
+            }
             assert client.get("/internal/continuous/status").status_code == 503
             assert client.get("/ingest/v1/runs/r/chunks/0").status_code == 503
             for method, path in WRITES:

@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from loguru import logger
 from otalon_common.logging import configure_logging
 
-from capture_runtime import CaptureIntent, resolve_capture_intent
+from capture_runtime import CaptureBackend, CaptureIntent, CaptureSnapshot, SourceState, resolve_capture_intent
 
 from .api import CaptureStatusProvider, PcapService, create_app
 from .capture_stats import CaptureLossMonitor
@@ -32,7 +32,8 @@ CAPTURE_STATS_INTERVAL_S = 30
 class RuntimeState:
     """Track running components for signal handling."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, intent: CaptureIntent | None = None) -> None:
+        self.intent = intent
         self.running = True
         self.recorder: Optional[TcpdumpRecorder] = None
         self.uvicorn_server: Optional[uvicorn.Server] = None
@@ -50,6 +51,20 @@ class RuntimeState:
     @property
     def is_running(self) -> bool:
         return self.recorder is not None and self.recorder.is_running
+
+    @property
+    def snapshot(self) -> CaptureSnapshot:
+        if self.intent is CaptureIntent.NONE:
+            return CaptureSnapshot(
+                CaptureIntent.NONE, CaptureBackend.NATIVE, SourceState.DISABLED, "none_selected", 0, 5, None, False
+            )
+        if self.intent is CaptureIntent.LIVE:
+            if self.acquisition is not None:
+                return self.acquisition.snapshot
+            return CaptureSnapshot(
+                CaptureIntent.LIVE, CaptureBackend.NATIVE, SourceState.WAITING, None, 0, 5, None, False
+            )
+        return CaptureSnapshot()
 
     async def stop(self) -> None:
         """Idempotent eight-second teardown inside the outer ten-second grace."""
@@ -177,7 +192,7 @@ def main() -> None:
     settings = PcapRecorderSettings.from_json_for_intent(config_path, intent)
     _configure_logging(settings.log)
 
-    runtime_state = RuntimeState()
+    runtime_state = RuntimeState(intent=intent)
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -198,11 +213,12 @@ def main() -> None:
 
 async def _run_service(settings: PcapRecorderSettings, intent: CaptureIntent, state: RuntimeState) -> None:
     """Serve retained evidence first; only the LIVE coordinator owns producers."""
+    state.intent = intent
     index_file = Path(settings.pcap.ringbuffer.directory) / "pcap_index.json"
     index = PcapIndex(index_file, chunk_duration=timedelta(seconds=settings.pcap.chunk_duration_sec), auto_write=False)
     ringbuffer = RingbufferManager(settings.pcap.ringbuffer, settings.pcap.archive, index, auto_write=False)
     service = PcapService(index, ringbuffer, api_config=settings.api)
-    app = create_app(service, status_provider=CaptureStatusProvider(state))
+    app = create_app(service, status_provider=CaptureStatusProvider(state, snapshot=lambda: state.snapshot))
     state.http_task = asyncio.create_task(_run_uvicorn(app, settings.api.host, settings.api.port, state))
 
     async def acquire() -> None:

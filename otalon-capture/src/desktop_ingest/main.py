@@ -7,6 +7,7 @@ import json
 import os
 import sys
 from contextlib import asynccontextmanager
+from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -14,7 +15,7 @@ import uvicorn
 from loguru import logger
 from otalon_common.logging import configure_logging
 
-from capture_runtime import CaptureIntent, resolve_capture_intent
+from capture_runtime import CaptureBackend, CaptureIntent, CaptureSnapshot, SourceState, resolve_capture_intent
 from pcap_recorder.api import CaptureStatusProvider, CaptureStatusResponse, PcapService, create_app
 from pcap_recorder.index import PcapChunkMeta, PcapIndex
 from pcap_recorder.ringbuffer import RingbufferManager
@@ -35,18 +36,44 @@ class ReceivedRing(RingbufferManager):
 
 
 class Status(CaptureStatusProvider):
-    def __init__(self, ledger, *, intent=CaptureIntent.LIVE):
+    def __init__(self, ledger, *, intent=None, processor=None, collector=None):
         self.ledger = ledger
         self.intent = intent
+        self.processor = processor
+        self.collector = collector
 
     def get_status(self):
-        observation = self.ledger.observation() if self.intent is CaptureIntent.LIVE else None
+        if self.intent is CaptureIntent.NONE:
+            return CaptureStatusResponse(
+                **asdict(
+                    CaptureSnapshot(
+                        CaptureIntent.NONE, CaptureBackend.WSL, SourceState.DISABLED, "none_selected", 0, 5, None, False
+                    )
+                )
+            )
+        snapshot = CaptureSnapshot()
+        if self.intent is CaptureIntent.LIVE and self.processor is not None:
+            owner = self.processor()
+            snapshot = owner.snapshot
+            observation = self.ledger.observation()
+            if (
+                snapshot.source_state is not SourceState.BLOCKED
+                and owner.usable
+                and observation is None
+                and self.collector is not None
+            ):
+                snapshot = self.collector().snapshot
+            # Current legacy recording is independent of processing/publication.
+            snapshot = replace(snapshot, observation_age_seconds=self.ledger.observation_age_seconds())
+        else:
+            observation = self.ledger.observation()
         return CaptureStatusResponse(
             interface=observation.get("interface") if observation else None,
             recording=observation.get("recording") if observation else None,
             link_up=None,
             drops_24h_pct=None,
             overflows=None,
+            **asdict(snapshot),
         )
 
 
@@ -176,7 +203,10 @@ def build_app(settings, ledger, source_key, operator_key, *, intent=CaptureInten
                 index._persist()
 
     service = PcapService(index, ReceivedRing(index), ApiConfig(host="0.0.0.0", port=9090))
-    app = create_app(service, Status(ledger))
+    app = create_app(
+        service,
+        Status(ledger, intent=intent, processor=lambda: app.state.processor, collector=lambda: app.state.collector),
+    )
     create_ingest_app(ledger, source_key, operator_key, app)
     from .processor_lifecycle import CollectorFreshness, ProcessorOwner
 
@@ -238,7 +268,9 @@ def main():
         min_free=int(os.environ.get("CONTINUOUS_MIN_FREE_BYTES", "1000000000")),
     )
     try:
-        uvicorn.run(build_app(settings, ledger, key, operator_key), host="0.0.0.0", port=9090, access_log=False)
+        uvicorn.run(
+            build_app(settings, ledger, key, operator_key, intent=intent), host="0.0.0.0", port=9090, access_log=False
+        )
     finally:
         ledger.close()
 

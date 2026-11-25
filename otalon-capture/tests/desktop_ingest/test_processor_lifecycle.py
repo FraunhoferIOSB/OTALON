@@ -381,12 +381,26 @@ async def test_collector_five_local_checks_then_authenticated_new_observation_on
         assert collector.present and collector.attempts == 5
         assert collector.snapshot.retry_exhausted is False
         assert processor.snapshot.source_state is not SourceState.RECORDING
-        assert (await request(app, "GET", "/status")).json() == {
+        status = (await request(app, "GET", "/status")).json()
+        legacy = {
             "interface": "fixture",
             "link_up": None,
             "recording": True,
             "drops_24h_pct": None,
             "overflows": None,
+        }
+        assert {name: status[name] for name in legacy} == legacy
+        assert status == {
+            **legacy,
+            "capture_type": "LIVE",
+            "backend": "wsl",
+            "source_state": "waiting",
+            "reason_code": None,
+            "retry_attempt": 0,
+            "retry_limit": 5,
+            "retry_in_seconds": None,
+            "retry_exhausted": False,
+            "observation_age_seconds": 0,
         }
     finally:
         await collector.stop()
