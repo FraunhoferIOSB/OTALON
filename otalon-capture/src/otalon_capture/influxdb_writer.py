@@ -5,22 +5,24 @@ from __future__ import annotations
 import random
 import threading
 import time
-from datetime import datetime, timedelta, timezone
 from collections.abc import Mapping
-from typing import Any, Iterable, List
+from datetime import datetime, timedelta, timezone
+from typing import Any, List
 
-from influxdb_client_3 import (
-    InfluxDBClient3,
-    InfluxDBError,
-    Point,
-    WritePrecision,
-    WriteOptions,
-    WriteType,
-    write_client_options,
-)
+from influxdb_client_3 import InfluxDBClient3
+from influxdb_client_3 import InfluxDBClient3 as _Client3
+from influxdb_client_3 import Point, WriteOptions, WritePrecision, WriteType, write_client_options
 from loguru import logger
 
 from .settings import InfluxConfig, WriteOptionsConfig
+from .write_failure import TerminalWriteError, permanent_auth_status
+
+
+class ClientReleaseError(RuntimeError):
+    """Sanitized release failure; component evidence is held separately."""
+
+    def __init__(self) -> None:
+        super().__init__("InfluxDB client release failed.")
 
 
 def _map_precision(precision: Any) -> WritePrecision:
@@ -49,7 +51,11 @@ def _success_callback(configuration: InfluxConfig, data: str) -> None:
     )
 
 
-def _error_callback(configuration: InfluxConfig, data: str, exception: InfluxDBError) -> None:
+def _error_callback(configuration: InfluxConfig, data: str, exception: BaseException) -> None:
+    status = permanent_auth_status(exception)
+    if status is not None:
+        logger.error("InfluxDB write refused: permanent_auth_refusal (HTTP {status}).", status=status)
+        return
     logger.error(
         "Failed writing batch for measurement '{measurement}'. Data size {batch_size}. Error: {error}",
         measurement=configuration.measurement_name,
@@ -58,7 +64,11 @@ def _error_callback(configuration: InfluxConfig, data: str, exception: InfluxDBE
     )
 
 
-def _retry_callback(configuration: InfluxConfig, data: str, exception: InfluxDBError) -> None:
+def _retry_callback(configuration: InfluxConfig, data: str, exception: BaseException) -> None:
+    status = permanent_auth_status(exception)
+    if status is not None:
+        logger.warning("InfluxDB write refused: permanent_auth_refusal (HTTP {status}).", status=status)
+        return
     logger.warning(
         "Retrying batch for measurement '{measurement}'. Data size {batch_size}. Error: {error}",
         measurement=configuration.measurement_name,
@@ -77,6 +87,12 @@ class InfluxDBWriter:
         window_interval_ms: int,
         verbose: bool = False,
     ) -> None:
+        self._buffer: List[Point] = []
+        self._lock = threading.Lock()
+        self._terminal_status: int | None = None
+        self._closed = False
+        self._released = False
+        self.release_failures: tuple[str, ...] = ()
         self.config = influx_config
         self.window_interval_ms = int(window_interval_ms)
         self.int_fields = {"packet_count", "total_volume", "min_packet_size", "max_packet_size", "collapsed_port_count"}
@@ -100,23 +116,24 @@ class InfluxDBWriter:
             token=self.config.token.get_secret_value(),
             database=self.config.database,
             write_client_options=write_client_options(
-                success_callback=lambda data: _success_callback(self.config, data),
-                error_callback=lambda data, exc: _error_callback(self.config, data, exc),
-                retry_callback=lambda data, exc: _retry_callback(self.config, data, exc),
+                success_callback=lambda key, data: _success_callback(self.config, data),
+                error_callback=lambda key, data, exc: _error_callback(self.config, data, exc),
+                retry_callback=lambda key, data, exc: _retry_callback(self.config, data, exc),
                 write_options=write_opts,
             ),
             auth_scheme="Bearer",
         )
 
-        self._buffer: List[Point] = []
-        self._lock = threading.Lock()
         self._next_flush_deadline_ms = self._compute_next_deadline()
 
     def write(self, value: Any) -> None:
         """Transform ``value`` into a point and enqueue it for writing."""
 
-        point = self._build_point(value)
         with self._lock:
+            self._raise_if_terminal()
+            if self._closed:
+                raise RuntimeError("InfluxDB writer is closed.")
+            point = self._build_point(value)
             self._buffer.append(point)
             self._maybe_flush_locked()
 
@@ -124,16 +141,60 @@ class InfluxDBWriter:
         """Flush buffered points, optionally forcing a write."""
 
         with self._lock:
+            self._raise_if_terminal()
+            if self._closed:
+                return
             if force:
                 self._flush_locked()
             else:
                 self._maybe_flush_locked()
 
     def close(self) -> None:
-        """Flush remaining points and close the client connection."""
+        """Flush once, release once even on failure, and retain terminal truth."""
 
-        self.flush(force=True)
-        self.client.close()
+        with self._lock:
+            if not self._closed:
+                try:
+                    if self._terminal_status is None:
+                        self._flush_locked()
+                finally:
+                    self._closed = True
+                    self._release_client_locked()
+            self._raise_if_terminal()
+            if self.release_failures:
+                raise ClientReleaseError() from None
+
+    def _raise_if_terminal(self) -> None:
+        if self._terminal_status is not None:
+            # Fresh signals avoid retaining transport exceptions or growing tracebacks in the latch.
+            try:
+                raise TerminalWriteError(self._terminal_status) from None
+            except TerminalWriteError as failure:
+                failure.__context__ = None
+                raise
+
+    def _release_client_locked(self) -> None:
+        if self._released:
+            return
+        self._released = True
+        if isinstance(self.client, _Client3):
+            # Inspected synchronous Client3.close is sequential; do not lose later releases.
+            resources = [
+                ("write_api", getattr(self.client, "_write_api", None)),
+                ("query_api", getattr(self.client, "_query_api", None)),
+                ("http_client", getattr(self.client, "_client", None)),
+            ]
+        else:
+            resources = [("client", self.client)]
+        failures = []
+        for name, resource in resources:
+            if resource is None:
+                continue
+            try:
+                resource.close()
+            except BaseException:
+                failures.append(name)
+        self.release_failures = tuple(failures)
 
     def _build_point(self, value: Any) -> Point:
         point = Point(self.config.measurement_name)
@@ -225,6 +286,7 @@ class InfluxDBWriter:
             self._flush_locked()
 
     def _flush_locked(self) -> None:
+        self._raise_if_terminal()
         if not self._buffer:
             self._next_flush_deadline_ms = self._compute_next_deadline()
             return
@@ -233,16 +295,27 @@ class InfluxDBWriter:
         self._buffer = []
         try:
             self.client.write(points)
-        except Exception as exc:  # noqa: BLE001 - keep the buffer intact for retry
-            logger.error(
-                "InfluxDB write failed ({error}). Retrying on next flush window with {count} buffered points.",
-                error=exc,
-                count=len(points),
-            )
+        except BaseException as exc:
             points.extend(self._buffer)
             self._buffer = points
-            self._next_flush_deadline_ms = self._now_ms() + self.flush_interval
-            return
+            if not isinstance(exc, Exception):
+                raise
+            self._terminal_status = permanent_auth_status(exc)
+            if self._terminal_status is None:
+                logger.error(
+                    "InfluxDB write failed ({error}). Retrying on next flush window with {count} buffered points.",
+                    error=exc,
+                    count=len(points),
+                )
+                self._next_flush_deadline_ms = self._now_ms() + self.flush_interval
+                return
+
+        if self._terminal_status is not None:
+            logger.error(
+                "InfluxDB write refused: permanent_auth_refusal (HTTP {status}).",
+                status=self._terminal_status,
+            )
+            self._raise_if_terminal()
 
         logger.debug(
             "InfluxDB flush: wrote {count} point(s) to measurement '{measurement}'.",
