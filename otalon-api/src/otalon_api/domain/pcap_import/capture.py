@@ -21,7 +21,7 @@ from __future__ import annotations
 import struct
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, Iterator
 
 from pydantic import BaseModel
 
@@ -178,27 +178,26 @@ def _read_pcapng_range(handle: BinaryIO) -> CaptureTimeRange | None:
     return _range_from(first, last, count)
 
 
-def _iter_pcapng_blocks(handle: BinaryIO, endian: str) -> "list[tuple[int, bytes]]":
-    """Return the ``(block_type, body)`` pairs of a pcapng file.
+def _iter_pcapng_blocks(handle: BinaryIO, endian: str) -> Iterator[tuple[int, bytes]]:
+    """Yield one bounded ``(block_type, body)`` pair at a time from a pcapng file.
 
     Malformed or implausibly large blocks terminate the walk instead of
     raising, so a truncated upload degrades to "no time range" rather than
     to a server error.
     """
-    blocks: list[tuple[int, bytes]] = []
     while True:
         header = handle.read(8)
         if len(header) < 8:
-            return blocks
+            return
         block_type, total_length = struct.unpack(f"{endian}II", header)
         if total_length < _PCAPNG_MIN_BLOCK_LENGTH or total_length > _PCAPNG_MAX_BLOCK_LENGTH:
-            return blocks
+            return
         body = handle.read(total_length - _PCAPNG_MIN_BLOCK_LENGTH)
         if len(body) < total_length - _PCAPNG_MIN_BLOCK_LENGTH:
-            return blocks
+            return
         if len(handle.read(4)) < 4:
-            return blocks
-        blocks.append((block_type, body))
+            return
+        yield block_type, body
 
 
 def _idb_tsresol(body: bytes, endian: str) -> int:
