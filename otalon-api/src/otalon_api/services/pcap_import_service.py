@@ -51,6 +51,9 @@ JOB_TYPE: JobType = "ingest"
 ARCHIVE_DIR_NAME = "failed"
 MAX_RECOVERY_ATTEMPTS = 3
 _ORPHAN_LOG_MARKER = "orphan-recovery"
+_CANCEL_REQUEST = "cancel-request"
+_CANCEL_ATTEMPT = "cancel-reconciliation"
+_CANCEL_BLOCKED = "Cancellation needs reconciliation; worker settlement is unverified."
 _TERMINAL_STATES = frozenset({"completed", "failed", "cancelled", "rejected"})
 
 
@@ -178,6 +181,11 @@ class PcapImportService:
         Returns:
             ``True`` when the worker accepted the job.
         """
+        async with self._dispatch_lock:
+            return await self._deliver_locked(job)
+
+    async def _deliver_locked(self, job: OperationsJob) -> bool:
+        """Deliver under the transport lock without recursive acquisition."""
         current = await self._jobs.get_job(job.id)
         if current is None or not is_import_job(current) or current.state != "queued":
             return False
@@ -185,7 +193,17 @@ class PcapImportService:
         params = job.params or {}
         file_path = self.file_path_of(job)
         if file_path is None:
-            await self._jobs.fail_job(job.id, error="Upload file is missing from the import directory")
+            await self._jobs.update_job(
+                job.id,
+                OperationsJobUpdate(
+                    state="failed",
+                    error="Upload file is missing from the import directory",
+                    ended_at=datetime.now(timezone.utc),
+                    can_cancel=False,
+                    can_retry=True,
+                ),
+                allowed_from={"queued"},
+            )
             return False
         try:
             await self._worker.deliver(
@@ -203,7 +221,17 @@ class PcapImportService:
             logger.warning("pcap-import: worker unreachable, keeping {} queued ({})", job.display_id, exc)
             return False
         except WorkerRejected as exc:
-            await self._jobs.fail_job(job.id, error=f"Worker rejected the import: {exc.detail}")
+            await self._jobs.update_job(
+                job.id,
+                OperationsJobUpdate(
+                    state="failed",
+                    error=f"Worker rejected the import: {exc.detail}",
+                    ended_at=datetime.now(timezone.utc),
+                    can_cancel=False,
+                    can_retry=True,
+                ),
+                allowed_from={"queued"},
+            )
             return False
         await self._jobs.update_job(
             job.id,
@@ -228,7 +256,7 @@ class PcapImportService:
         delivered = 0
         async with self._dispatch_lock:
             for job in await self.list_jobs(state="queued"):
-                if not await self.deliver(job):
+                if not await self._deliver_locked(job):
                     break
                 delivered += 1
         return delivered
@@ -249,38 +277,64 @@ class PcapImportService:
         job = await self._jobs.get_job_by_display_id(display_id)
         if job is None or not is_import_job(job):
             return None
+        if job.state in _TERMINAL_STATES:
+            return job
         if report.state in ("completed", "failed", "cancelled"):
             return await self._apply_terminal(job, report)
-        update = OperationsJobUpdate(
-            **_present(report, ("state", "phase_current", "phase_total", "phase_label", "latest_event"))
-        )
-        updated = await self._jobs.update_job(job.id, update, allowed_from={"queued", "running", "cancelling"})
-        return updated or job
+        data = _present(report, ("state", "phase_current", "phase_total", "phase_label", "latest_event"))
+        allowed = {"queued", "running"}
+        if report.state == "cancelling":
+            data["can_retry"] = False
+        updated = await self._jobs.update_job(job.id, OperationsJobUpdate(**data), allowed_from=allowed)
+        if updated is None and report.state != "running":
+            # Separate SQL guards keep late progress from overwriting blocked evidence.
+            data.pop("latest_event", None)
+            updated = await self._jobs.update_job(job.id, OperationsJobUpdate(**data), allowed_from={"cancelling"})
+        return updated or await self._jobs.get_job(job.id)
 
-    async def _apply_terminal(self, job: OperationsJob, report: PcapImportReport) -> OperationsJob | None:
+    async def _apply_terminal(
+        self, job: OperationsJob, report: PcapImportReport, *, finished_at: datetime | None = None
+    ) -> OperationsJob | None:
         """Drive a job to its terminal state and clean up its upload."""
-        progress = _present(report, ("phase_current", "phase_total", "phase_label", "latest_event"))
-        if progress:
-            await self._jobs.update_job(job.id, OperationsJobUpdate(**progress), allowed_from={"queued", "running"})
+        data = _present(report, ("phase_current", "phase_total", "phase_label", "latest_event", "error"))
+        if report.result is not None:
+            data["result"] = json.dumps(report.result, default=str)
+        if job.error == _CANCEL_BLOCKED and report.error is None:
+            data["error"] = _cancel_previous_error(job)
+        if job.latest_event == _CANCEL_BLOCKED and report.latest_event is None:
+            data["latest_event"] = None
+        data["ended_at"] = finished_at or datetime.now(timezone.utc)
         if report.state == "completed":
-            await self._jobs.update_job(job.id, OperationsJobUpdate(state="running"), allowed_from={"queued"})
-            finished = await self._jobs.complete_job(job.id, result=json.dumps(report.result or {}, default=str))
+            data.update(state="completed", can_cancel=False, can_retry=False)
+            if report.result is None and job.result is None:
+                data["result"] = "{}"
+            finished = await self._jobs.update_job(
+                job.id, OperationsJobUpdate(**data), allowed_from={"queued", "running", "cancelling"}
+            )
             # Deliberately NOT offloaded: invalidate_data_extent_cache is a
             # pure in-memory dict pop, so a to_thread hop would cost more
             # than the call itself. The invariant is documented on the
             # method and pinned by a test (audit QUA-09).
-            self._influx.invalidate_data_extent_cache(self._config.measurement)
+            if finished is not None:
+                self._influx.invalidate_data_extent_cache(self._config.measurement)
         elif report.state == "failed":
-            finished = await self._jobs.fail_job(job.id, error=report.error or "Import failed")
+            data.update(state="failed", can_cancel=False, can_retry=True, error=report.error or "Import failed")
+            finished = await self._jobs.update_job(
+                job.id, OperationsJobUpdate(**data), allowed_from={"queued", "running", "cancelling"}
+            )
         else:
+            await self._jobs.update_job(
+                job.id, OperationsJobUpdate(**data), allowed_from={"queued", "running", "cancelling"}
+            )
             finished = await self._jobs.cancel_job(job.id, stops_immediately=True, actor="worker")
-        await self.cleanup_upload(job, report.state or "failed")
+        if finished is not None:
+            await self.cleanup_upload(finished, finished.state)
         return finished or await self._jobs.get_job(job.id)
 
     # ── B10: orphan recovery ─────────────────────────────────────
 
     async def reap_orphans(self) -> int:
-        """Recover ``running`` jobs that no worker is actually processing.
+        """Reconcile cancellation settlement and recover running-only orphans.
 
         A worker restart loses its in-memory slot; the job would otherwise
         stay ``running`` forever. Jobs younger than the configured grace
@@ -288,8 +342,14 @@ class PcapImportService:
         for an orphan.
 
         Returns:
-            The number of jobs re-queued or failed in this pass.
+            The number of cancellations settled or orphans recovered this pass.
         """
+        async with self._dispatch_lock:
+            settled = await self._reconcile_cancelling_locked()
+            return settled + await self._reap_running_locked()
+
+    async def _reap_running_locked(self) -> int:
+        """Retain the legacy running-only health/recovery budget under coordination."""
         running = await self.list_jobs(state="running")
         if not running:
             return 0
@@ -299,6 +359,10 @@ class PcapImportService:
         cutoff = datetime.now(timezone.utc) - timedelta(seconds=self._config.orphan_grace_s)
         recovered = 0
         for job in running:
+            current = await self.get_job(job.display_id)
+            if current is None or current.state != "running":
+                continue
+            job = current
             if health.busy and health.display_id == job.display_id:
                 continue
             if _started_at(job) > cutoff:
@@ -307,16 +371,93 @@ class PcapImportService:
             recovered += 1
         return recovered
 
+    async def _reconcile_cancelling_locked(self) -> int:
+        """Spend at most three persisted exact-status attempts after request grace."""
+        settled = 0
+        for candidate in await self.list_jobs(state="cancelling"):
+            job = await self.get_job(candidate.display_id)
+            if job is None or job.state != "cancelling":
+                continue
+            requested, attempts = _cancel_episode(job)
+            now = datetime.now(timezone.utc)
+            if requested is None:
+                await self._jobs.update_job(
+                    job.id,
+                    OperationsJobUpdate(
+                        can_retry=False,
+                        log_append=[{"event": _CANCEL_REQUEST, "requested_at": now.isoformat()}],
+                    ),
+                    allowed_from={"cancelling"},
+                )
+                continue
+            if attempts >= MAX_RECOVERY_ATTEMPTS:
+                if job.latest_event != _CANCEL_BLOCKED:
+                    await self._mark_cancel_unverified(job)
+                continue
+            if (now - requested).total_seconds() < self._config.orphan_grace_s:
+                continue
+            job = await self._jobs.update_job(
+                job.id,
+                OperationsJobUpdate(
+                    can_retry=False,
+                    log_append=[{"event": _CANCEL_ATTEMPT, "attempt": attempts + 1, "requested_at": now.isoformat()}],
+                ),
+                allowed_from={"cancelling"},
+            )
+            if job is None:
+                continue
+            snapshot = await self._worker.status()
+            current = await self.get_job(job.display_id)
+            if current is None or current.state != "cancelling":
+                continue
+            if (
+                snapshot is not None
+                and snapshot.display_id == job.display_id
+                and snapshot.state in ("completed", "failed", "cancelled")
+                and snapshot.finished_at is not None
+            ):
+                report = PcapImportReport.model_validate(
+                    snapshot.model_dump(
+                        include={"state", "phase_current", "phase_total", "latest_event", "error", "result"}
+                    )
+                )
+                finished = await self._apply_terminal(current, report, finished_at=snapshot.finished_at)
+                if finished is not None and finished.state in _TERMINAL_STATES:
+                    settled += 1
+            elif attempts + 1 == MAX_RECOVERY_ATTEMPTS:
+                await self._mark_cancel_unverified(current)
+        return settled
+
+    async def _mark_cancel_unverified(self, job: OperationsJob) -> None:
+        """Persist exhaustion even when restart interrupted the last status call."""
+        await self._jobs.update_job(
+            job.id,
+            OperationsJobUpdate(
+                error=_CANCEL_BLOCKED,
+                latest_event=_CANCEL_BLOCKED,
+                can_retry=False,
+                log_append=[{"event": "cancel-unverified", "previous_error": job.error}],
+            ),
+            allowed_from={"cancelling"},
+        )
+
     async def _recover_orphan(self, job: OperationsJob) -> None:
         """Re-queue an orphaned job, or fail it once attempts run out."""
         attempts = _recovery_attempts(job) + 1
         if attempts > MAX_RECOVERY_ATTEMPTS or self.file_path_of(job) is None:
-            await self._jobs.fail_job(
+            await self._jobs.update_job(
                 job.id,
-                error=(
-                    f"Import worker stopped processing this job and recovery was "
-                    f"abandoned after {attempts - 1} attempt(s)"
+                OperationsJobUpdate(
+                    state="failed",
+                    error=(
+                        f"Import worker stopped processing this job and recovery was "
+                        f"abandoned after {attempts - 1} attempt(s)"
+                    ),
+                    ended_at=datetime.now(timezone.utc),
+                    can_cancel=False,
+                    can_retry=True,
                 ),
+                allowed_from={"running"},
             )
             logger.warning("pcap-import: gave up on orphaned job {}", job.display_id)
             return
@@ -397,13 +538,49 @@ class PcapImportService:
         return job if job is not None and is_import_job(job) else None
 
     async def cancel_job(self, display_id: str) -> OperationsJob | None:
-        """Cancel an import, asking the worker to stop when it is running."""
-        job = await self.get_job(display_id)
-        if job is None or job.state in _TERMINAL_STATES:
-            return job
-        if job.state == "running":
-            await self._worker.cancel(display_id)
-        return await self._jobs.cancel_job(job.id, stops_immediately=job.state != "running", actor="operator")
+        """Request an identity-bound cooperative stop without claiming settlement."""
+        async with self._dispatch_lock:
+            job = await self.get_job(display_id)
+            if job is None or job.state in _TERMINAL_STATES or not job.can_cancel:
+                return job
+            if job.state == "queued":
+                guarded = await self._jobs.update_job(
+                    job.id, OperationsJobUpdate(state="cancelling", can_retry=False), allowed_from={"queued"}
+                )
+                if guarded is None:
+                    return await self.get_job(display_id)
+                finished = await self._jobs.cancel_job(job.id, stops_immediately=True, actor="operator")
+                if finished is not None:
+                    await self.cleanup_upload(finished, "cancelled")
+                return finished or await self.get_job(display_id)
+            _, attempts = _cancel_episode(job)
+            if job.state == "cancelling" and attempts < MAX_RECOVERY_ATTEMPTS:
+                return job
+            if job.state == "running":
+                job = await self._jobs.cancel_job(job.id, stops_immediately=False, actor="operator")
+                if job is None:
+                    return await self.get_job(display_id)
+            data: dict[str, Any] = {
+                "can_retry": False,
+                "log_append": [{"event": _CANCEL_REQUEST, "requested_at": datetime.now(timezone.utc).isoformat()}],
+            }
+            if job.error == _CANCEL_BLOCKED:
+                data["error"] = _cancel_previous_error(job)
+            if job.latest_event == _CANCEL_BLOCKED:
+                data["latest_event"] = "Cancellation reconciliation requested"
+            guarded = await self._jobs.update_job(job.id, OperationsJobUpdate(**data), allowed_from={"cancelling"})
+            if guarded is None:
+                return await self.get_job(display_id)
+            try:
+                accepted = await self._worker.cancel(display_id)
+            except WorkerUnavailable:
+                accepted = False
+            await self._jobs.update_job(
+                job.id,
+                OperationsJobUpdate(log_append=[{"event": "cancel-delivery", "accepted": accepted}]),
+                allowed_from={"cancelling"},
+            )
+            return await self.get_job(display_id)
 
     async def run_dispatch_loop(self) -> None:
         """Reconcile queued and orphaned jobs on a fixed cadence.
@@ -455,3 +632,28 @@ def _started_at(job: OperationsJob) -> datetime:
 def _recovery_attempts(job: OperationsJob) -> int:
     """Count how often this job has already been recovered from an orphan."""
     return sum(1 for entry in job.log or [] if isinstance(entry, dict) and entry.get("event") == _ORPHAN_LOG_MARKER)
+
+
+def _cancel_episode(job: OperationsJob) -> tuple[datetime | None, int]:
+    """Read the last persisted request and its attempt count across restarts."""
+    attempts = 0
+    for entry in reversed(job.log):
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("event") == _CANCEL_ATTEMPT:
+            attempts += 1
+        if entry.get("event") == _CANCEL_REQUEST:
+            requested = _parse_dt(entry.get("requested_at"))
+            if requested is not None and requested.tzinfo is not None:
+                return requested.astimezone(timezone.utc), attempts
+            return None, attempts
+    return None, attempts
+
+
+def _cancel_previous_error(job: OperationsJob) -> str | None:
+    """Recover real error evidence shadowed by the reconciliation diagnosis."""
+    for entry in reversed(job.log):
+        if isinstance(entry, dict) and entry.get("event") == "cancel-unverified":
+            value = entry.get("previous_error")
+            return value if isinstance(value, str) and value != _CANCEL_BLOCKED else None
+    return None

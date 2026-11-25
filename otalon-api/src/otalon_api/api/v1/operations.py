@@ -66,6 +66,7 @@ from otalon_api.dependencies import (
     get_operations_pipeline_service,
     get_operations_reset_service,
     get_passive_discovery_service,
+    get_pcap_import_service,
     get_postgres_repo,
 )
 from otalon_api.domain.operations import AuditCategory, OperationsAuditAppend
@@ -93,6 +94,7 @@ from otalon_api.services.operations_maintenance_service import OperationsMainten
 from otalon_api.services.operations_pipeline_service import OperationsPipelineService
 from otalon_api.services.operations_reset_service import OperationsResetService
 from otalon_api.services.passive_discovery_service import PassiveDiscoveryService
+from otalon_api.services.pcap_import_service import is_import_job
 
 router = APIRouter(prefix="/api/v1/operations", tags=["operations"])
 
@@ -993,7 +995,17 @@ async def cancel_job(
     terminal ``cancelled`` state once the stop actually lands. Whether a
     job stops immediately is derived from its type by the service.
     """
-    updated = await jobs_service.cancel_job(job_id, actor="operator")
+    current = await jobs_service.get_job(job_id)
+    if current is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if is_import_job(current):
+        if current.state in ("completed", "failed", "cancelled", "rejected") or not current.can_cancel:
+            updated = None
+        else:
+            # Resolve only for import work, sharing the same cached owner as uploads.
+            updated = await get_pcap_import_service().cancel_job(current.display_id)
+    else:
+        updated = await jobs_service.cancel_job(job_id, actor="operator")
     if updated is None:
         current = await jobs_service.get_job(job_id)
         if current is None:

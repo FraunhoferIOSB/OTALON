@@ -15,12 +15,14 @@ of that particular payload and surfaces as :class:`WorkerRejected`.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from loguru import logger
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class WorkerUnavailable(Exception):
@@ -53,6 +55,52 @@ class WorkerHealth:
     busy: bool
     state: str
     display_id: str | None
+
+
+class WorkerStatus(BaseModel):
+    """API-owned bounded decoder of the producer's existing ImportStatus."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    state: Literal["idle", "running", "cancelling", "completed", "failed", "cancelled"]
+    display_id: str | None = Field(default=None, strict=True, min_length=1, max_length=128)
+    phase: Literal["accepted", "validating", "reading", "writing", "finished"] | None = None
+    phase_current: int | None = Field(default=None, strict=True, ge=0, le=3)
+    phase_total: int = Field(default=3, strict=True, ge=3, le=3)
+    latest_event: str | None = Field(default=None, strict=True, max_length=4096)
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    error: str | None = Field(default=None, strict=True, max_length=4096)
+    result: dict[str, Any] | None = None
+
+    @field_validator("started_at", "finished_at", mode="before")
+    @classmethod
+    def _timestamp(cls, value: Any) -> datetime | None:
+        """Accept only bounded aware ISO datetimes, never numeric coercion."""
+        if value is None:
+            return None
+        if isinstance(value, str) and len(value) <= 64:
+            value = datetime.fromisoformat(value)
+        if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("status timestamp must be an aware ISO datetime")
+        return value
+
+    @field_validator("result", mode="before")
+    @classmethod
+    def _result(cls, value: Any) -> dict[str, Any] | None:
+        """Retain actual result fields while refusing malformed known counters."""
+        if value is None:
+            return None
+        if not isinstance(value, dict):
+            raise ValueError("status result must be an object")
+        for name in ("records_processed", "points_written"):
+            counter = value.get(name)
+            if counter is not None and (type(counter) is not int or not 0 <= counter <= 2**63 - 1):
+                raise ValueError("status result counter is invalid")
+        for name in ("time_start", "time_end"):
+            if name in value:
+                cls._timestamp(value[name])
+        return value
 
 
 class PcapImportWorkerClient:
@@ -121,7 +169,7 @@ class PcapImportWorkerClient:
         """Ask the worker to abort the running import.
 
         Args:
-            display_id: The job expected to be running (diagnostics only).
+            display_id: Exact job identity the worker must check under its slot lock.
 
         Returns:
             ``True`` when the worker accepted the cancellation.
@@ -146,6 +194,16 @@ class PcapImportWorkerClient:
             display_id=body.get("display_id"),
         )
 
+    async def status(self) -> WorkerStatus | None:
+        """Read authenticated exact status; any refusal or malformed shape is unknown."""
+        try:
+            status, body = await self._request("GET", "/status")
+            if status != 200 or not self._api_key or not isinstance(body, dict):
+                return None
+            return WorkerStatus.model_validate(body)
+        except (WorkerUnavailable, ValueError, RecursionError):
+            return None
+
     async def _request(self, method: str, path: str, *, json_body: Any = None) -> tuple[int, Any]:
         """Issue one upstream call and return ``(status, parsed_body)``.
 
@@ -153,16 +211,31 @@ class PcapImportWorkerClient:
             WorkerUnavailable: On any transport-level failure.
         """
         url = f"{self._base}{path}"
-        headers = {"X-API-Key": self._api_key} if self._api_key and path in {"/import", "/import/cancel"} else None
+        headers = (
+            {"X-API-Key": self._api_key} if self._api_key and path in {"/import", "/import/cancel", "/status"} else None
+        )
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
+                if path == "/status":
+                    async with client.stream(method, url, headers=headers) as response:
+                        if response.status_code != 200:
+                            return response.status_code, None
+                        content = bytearray()
+                        async for chunk in response.aiter_bytes():
+                            if len(content) + len(chunk) > 65_536:
+                                return response.status_code, None
+                            content.extend(chunk)
+                        try:
+                            return response.status_code, json.loads(content)
+                        except (ValueError, RecursionError):
+                            return response.status_code, None
                 response = await client.request(method, url, headers=headers, json=json_body)
         except httpx.TransportError as exc:
             logger.warning("pcap-import worker unreachable ({} {}): {}", method, path, exc)
             raise WorkerUnavailable(f"{type(exc).__name__}: {exc}") from exc
         try:
             body: Any = response.json()
-        except ValueError:
+        except (ValueError, RecursionError):
             body = {"detail": response.text}
         return response.status_code, body
 

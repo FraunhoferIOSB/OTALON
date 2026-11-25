@@ -143,7 +143,7 @@ class FakeJobsService:
         allowed = allowed_from or {"queued", "running", "cancelling"}
         if job.state not in allowed:
             return None
-        data = update.model_dump(exclude_unset=True, exclude_none=True)
+        data = update.model_dump(exclude_unset=True)
         log_append = data.pop("log_append", None)
         updated = job.model_copy(update=data)
         if log_append is not None:
@@ -191,9 +191,15 @@ class FakeJobsService:
         return await self._terminal(job_id, "failed", {"queued", "running", "cancelling"}, {"error": error})
 
     async def cancel_job(self, job_id: int, stops_immediately: bool | None = None, **_: Any) -> OperationsJob | None:
-        """Cancel a cancellable job."""
-        state = "cancelled" if stops_immediately is not False else "cancelling"
-        return await self._terminal(job_id, state, {"queued", "running", "cancelling"}, {})
+        """Mirror SQL can-cancel and immediate/cooperative state guards."""
+        job = self.jobs.get(job_id)
+        if job is None or not job.can_cancel:
+            return None
+        if stops_immediately is False:
+            return await self.update_job(job_id, OperationsJobUpdate(state="cancelling"), {"queued", "running"})
+        return await self._terminal(
+            job_id, "cancelled", {"queued", "running", "cancelling"}, {"can_cancel": False, "can_retry": True}
+        )
 
     async def _terminal(
         self,

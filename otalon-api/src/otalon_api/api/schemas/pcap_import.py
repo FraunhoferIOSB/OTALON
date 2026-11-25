@@ -85,7 +85,7 @@ class PcapImportReport(BaseModel):
     change", never "set to null".
     """
 
-    state: Literal["running", "completed", "failed", "cancelled"] | None = None
+    state: Literal["running", "cancelling", "completed", "failed", "cancelled"] | None = None
     phase_current: int | None = None
     phase_total: int | None = None
     phase_label: str | None = None
