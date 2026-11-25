@@ -28,7 +28,7 @@ services:
       CONTINUOUS_SOURCE_KEY_FILE: /run/secrets/continuous-source-key
     volumes: !override
       - continuous-capture-data:/app/continuous
-      - ./shared/continuous-source.key:/run/secrets/continuous-source-key:ro
+      - ./shared/logs:/app/logs
     healthcheck:
       test: [CMD-SHELL, "curl -fsS http://127.0.0.1:9090/health || exit 1"]
   otalon-clas:
@@ -57,6 +57,7 @@ services:
       PCAP_BUFFER_DIR: /app/continuous/raw
       PCAP_ARCHIVE_DIR: /app/continuous/raw
       COMPOSE_OVERLAY: docker-compose.wsl.yml
+      COMPOSE_CAPTURE_OVERLAY: ${COMPOSE_CAPTURE_OVERLAY:-}
       COMPOSE_PROFILES: all
     volumes: !override
       - ./shared/logs:/app/logs

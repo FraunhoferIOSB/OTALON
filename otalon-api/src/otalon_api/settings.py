@@ -384,6 +384,7 @@ class Settings(BaseSettings):
     )
 
     compose_overlay: str = Field(default="", description="Fixed optional docker-compose.wsl.yml overlay")
+    compose_capture_overlay: str = Field(default="", description="Fixed optional docker-compose.wsl-live.yml key mount")
     compose_profiles: str = Field(default="", description="Selected lifecycle profile (all or app)")
     compose_image: str = Field(default="docker:24.0.9-cli", description="Docker image for compose runner")
     compose_file: str = Field(

@@ -48,6 +48,11 @@ class ComposeRunner:
         self._overlay = getattr(settings, "compose_overlay", "")
         if self._overlay not in {"", "docker-compose.wsl.yml"}:
             raise ValueError("Compose overlay is not allowed")
+        self._capture_overlay = getattr(settings, "compose_capture_overlay", "")
+        if self._capture_overlay not in {"", "docker-compose.wsl-live.yml"}:
+            raise ValueError("Compose capture overlay is not allowed")
+        if self._capture_overlay and self._overlay != "docker-compose.wsl.yml":
+            raise ValueError("Compose capture overlay requires docker-compose.wsl.yml")
         self._profiles = getattr(settings, "compose_profiles", "")
         if self._profiles not in {"", "all", "app"}:
             raise ValueError("Compose profile is not allowed")
@@ -146,6 +151,8 @@ class ComposeRunner:
         cmd = ["docker", "compose", "--project-directory", workspace_dir or ".", "-f", self._compose_file]
         if self._overlay:
             cmd += ["-f", os.path.join(workspace_dir, self._overlay)]
+        if self._capture_overlay:
+            cmd += ["-f", os.path.join(workspace_dir, self._capture_overlay)]
         if self._profiles:
             cmd += ["--profile", self._profiles]
         if env_file:

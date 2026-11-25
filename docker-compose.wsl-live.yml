@@ -1,0 +1,9 @@
+services:
+  otalon-capture:
+    volumes:
+      - type: bind
+        source: ./shared/continuous-source.key
+        target: /run/secrets/continuous-source-key
+        read_only: true
+        bind:
+          create_host_path: false
