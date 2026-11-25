@@ -137,12 +137,11 @@ class Settings(BaseSettings):
         ),
     )
     pcap_import_max_upload_bytes: int = Field(
-        default=536_870_912,
+        default=1_073_741_824,
         gt=0,
         description=(
-            "Hard server-side upload limit for capture files in bytes "
-            "(default 512 MiB, deliberately conservative). Enforced while "
-            "streaming, not from the client-declared Content-Length."
+            "Hard server-side file payload limit in bytes (default 1024 MiB, 1 GiB). "
+            "Enforced against received file bytes while streaming, not the client-declared Content-Length."
         ),
     )
     pcap_import_worker_host: str = Field(
