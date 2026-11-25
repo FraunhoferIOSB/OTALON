@@ -417,6 +417,27 @@ export interface CaptureStatus {
   recording: boolean | null
   drops_24h_pct: number | null
   overflows: number | null
+  capture_type: 'NONE' | 'LIVE' | null
+  backend: 'native' | 'wsl' | null
+  source_state: 'disabled' | 'waiting' | 'recording' | 'degraded' | 'blocked'
+  reason_code:
+    | 'none_selected'
+    | 'source_absent'
+    | 'collector_stale'
+    | 'retry_exhausted'
+    | 'privilege_denied'
+    | 'dependency_unavailable'
+    | 'custody_invalid'
+    | 'checkpoint_incompatible'
+    | 'upstream_unavailable'
+    | null
+  retry_attempt: 0 | 1 | 2 | 3 | 4 | 5 | null
+  retry_limit: 5 | null
+  /** Finite remaining retry delay, from 0 through 16 seconds. */
+  retry_in_seconds: number | null
+  retry_exhausted: boolean | null
+  /** Finite nonnegative receipt age; not historical collector process truth. */
+  observation_age_seconds: number | null
 }
 
 /**

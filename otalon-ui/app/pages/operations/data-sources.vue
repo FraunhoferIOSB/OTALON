@@ -4,7 +4,7 @@
       <div class="col-12 col-md-7">
         <q-card flat bordered class="full-height">
           <q-card-section class="row items-center q-py-sm">
-            <span class="cd-card-title">Live Capture</span>
+            <span class="cd-card-title">Automatic Capture</span>
             <q-spinner
               v-if="isInitialLoading"
               size="14px"
@@ -24,8 +24,14 @@
           </q-card-section>
           <q-separator />
           <q-card-section v-if="loadError" class="q-py-sm">
-             <InsufficientPermissionsNotice :message="loadError" />
-             <q-banner v-if="!isInsufficientPermissionsMessage(loadError)" rounded dense class="cd-inline-warn" data-test="load-error">
+            <InsufficientPermissionsNotice :message="loadError" />
+            <q-banner
+              v-if="!isInsufficientPermissionsMessage(loadError)"
+              rounded
+              dense
+              class="cd-inline-warn"
+              data-test="load-error"
+            >
               <template #avatar>
                 <q-icon name="error_outline" color="negative" size="18px" />
               </template>
@@ -33,11 +39,44 @@
             </q-banner>
           </q-card-section>
           <q-separator v-if="loadError" />
+          <q-card-section class="q-py-sm">
+            <div class="row q-col-gutter-sm">
+              <div class="col-6 col-sm-4">
+                <div class="cd-fact__label">Selected mode</div>
+                <span class="text-weight-bold" data-test="capture-mode">{{ captureModeLabel }}</span>
+              </div>
+              <div class="col-6 col-sm-4">
+                <div class="cd-fact__label">Backend</div>
+                <span class="text-weight-bold" data-test="capture-backend">{{ captureBackendLabel }}</span>
+              </div>
+              <div class="col-12 col-sm-4">
+                <div class="cd-fact__label">Source readiness</div>
+                <CdStateBadge :kind="captureSourceKind" :label="captureSourceState" data-test="capture-source-state" />
+              </div>
+            </div>
+            <div class="row q-col-gutter-sm q-mt-xs text-caption">
+              <div class="col-12 col-sm-4">
+                Reason: <span data-test="capture-reason">{{ captureReasonLabel }}</span>
+              </div>
+              <div class="col-12 col-sm-4">
+                Automatic retry: <span data-test="capture-retry">{{ captureRetryLabel }}</span>
+              </div>
+              <div class="col-12 col-sm-4">
+                Observation age: <span data-test="capture-observation-age">{{ captureObservationLabel }}</span>
+              </div>
+            </div>
+            <div class="text-caption text-muted q-mt-xs" data-test="capture-semantics">{{ captureSemantics }}</div>
+            <div class="text-caption text-muted">
+              Carrier-up is not traffic-present. Source readiness is not authenticated metric-write success; API
+              liveness does not establish recording. Mode changes are installation-owned, not controls on this page.
+            </div>
+          </q-card-section>
+          <q-separator />
           <q-card-section class="row q-col-gutter-md">
             <div class="col-6 col-sm-3">
               <div class="cd-fact__label">
                 Interface
-                 <q-icon name="info" color="grey-5" size="14px"
+                <q-icon name="info" color="grey-5" size="14px"
                   ><q-tooltip>Physical capture link state reported by recorder.</q-tooltip></q-icon
                 >
               </div>
@@ -46,8 +85,11 @@
             <div class="col-6 col-sm-3">
               <div class="cd-fact__label">
                 Recording
-                 <q-icon name="info" color="grey-5" size="14px"
-                  ><q-tooltip>Whether recorder is writing captured traffic.</q-tooltip></q-icon
+                <q-icon name="info" color="grey-5" size="14px"
+                  ><q-tooltip
+                    >Local capture-process fact on native; supplied current Windows collector observation on WSL.
+                    Neither proves complete producer readiness or metric publication.</q-tooltip
+                  ></q-icon
                 >
               </div>
               <CdSignalDot :signal="recordingSignal" :label="recordingLabel" data-test="capture-recording" />
@@ -55,7 +97,7 @@
             <div class="col-6 col-sm-3">
               <div class="cd-fact__label">
                 Drops (24 h)
-                 <q-icon name="info" color="grey-5" size="14px"
+                <q-icon name="info" color="grey-5" size="14px"
                   ><q-tooltip>Packets dropped by recorder in last 24 hours. Dash means unavailable.</q-tooltip></q-icon
                 >
               </div>
@@ -66,7 +108,7 @@
             <div class="col-6 col-sm-3">
               <div class="cd-fact__label">
                 Overflows
-                 <q-icon name="info" color="grey-5" size="14px"
+                <q-icon name="info" color="grey-5" size="14px"
                   ><q-tooltip>Capture buffer overflows reported by recorder. Dash means unavailable.</q-tooltip></q-icon
                 >
               </div>
@@ -144,8 +186,14 @@
           </q-card-section>
           <q-separator />
           <q-card-section v-if="store.passiveError" class="q-py-sm">
-             <InsufficientPermissionsNotice :message="store.passiveError" />
-             <q-banner v-if="!isInsufficientPermissionsMessage(store.passiveError)" rounded dense class="cd-inline-warn" data-test="passive-error">
+            <InsufficientPermissionsNotice :message="store.passiveError" />
+            <q-banner
+              v-if="!isInsufficientPermissionsMessage(store.passiveError)"
+              rounded
+              dense
+              class="cd-inline-warn"
+              data-test="passive-error"
+            >
               <template #avatar>
                 <q-icon name="error_outline" color="negative" size="18px" />
               </template>
@@ -158,8 +206,8 @@
               <div class="col-6">
                 <div class="cd-fact__label">
                   Assets known
-                  <q-icon name="info" size="14px"
-                     color="grey-5"><q-tooltip>Distinct devices with a persisted passively-observed interface.</q-tooltip></q-icon
+                  <q-icon name="info" size="14px" color="grey-5"
+                    ><q-tooltip>Distinct devices with a persisted passively-observed interface.</q-tooltip></q-icon
                   >
                 </div>
                 <span class="text-subtitle1 text-weight-bold cd-mono" data-test="passive-assets">
@@ -169,8 +217,8 @@
               <div class="col-6">
                 <div class="cd-fact__label">
                   Last observed
-                  <q-icon name="info" size="14px"
-                     color="grey-5"><q-tooltip>Most recent passively-observed timestamp persisted by the seeder.</q-tooltip></q-icon
+                  <q-icon name="info" size="14px" color="grey-5"
+                    ><q-tooltip>Most recent passively-observed timestamp persisted by the seeder.</q-tooltip></q-icon
                   >
                 </div>
                 <span class="text-subtitle2 text-weight-bold cd-mono" data-test="passive-last-seen">
@@ -220,8 +268,8 @@
               <div class="col-4">
                 <div class="cd-fact__label">
                   Last cycle
-                  <q-icon name="info" size="14px"
-                     color="grey-5"><q-tooltip>When the seeder last completed a poll cycle.</q-tooltip></q-icon
+                  <q-icon name="info" size="14px" color="grey-5"
+                    ><q-tooltip>When the seeder last completed a poll cycle.</q-tooltip></q-icon
                   >
                 </div>
                 <span class="text-subtitle2 text-weight-bold cd-mono" data-test="seeder-last-cycle">
@@ -231,8 +279,8 @@
               <div class="col-4">
                 <div class="cd-fact__label">
                   Rows last cycle
-                  <q-icon name="info" size="14px"
-                     color="grey-5"><q-tooltip
+                  <q-icon name="info" size="14px" color="grey-5"
+                    ><q-tooltip
                       >Rows written by the most recent cycle only — this is not a cumulative total.</q-tooltip
                     ></q-icon
                   >
@@ -244,8 +292,8 @@
               <div class="col-4">
                 <div class="cd-fact__label">
                   Poll interval
-                  <q-icon name="info" size="14px"
-                     color="grey-5"><q-tooltip>Interval the seeder is currently applying.</q-tooltip></q-icon
+                  <q-icon name="info" size="14px" color="grey-5"
+                    ><q-tooltip>Interval the seeder is currently applying.</q-tooltip></q-icon
                   >
                 </div>
                 <span class="text-subtitle2 text-weight-bold cd-mono" data-test="seeder-poll-interval">
@@ -288,14 +336,15 @@
             <input
               ref="fileInput"
               type="file"
+              multiple
               class="hidden"
-              accept=".pcap,.pcapng,application/vnd.tcpdump.pcap"
+              aria-label="Select captures to add to the import queue"
               data-test="file-input"
               @change="onFilePicked"
             />
             <div
               class="cd-dropzone"
-              :class="{ 'cd-dropzone--busy': store.isUploading, 'cd-dropzone--over': isDragOver }"
+              :class="{ 'cd-dropzone--over': isDragOver }"
               role="button"
               tabindex="0"
               aria-label="Drop PCAP or PCAPNG here or press Enter to browse"
@@ -309,128 +358,201 @@
             >
               <q-icon name="upload_file" size="20px" class="q-mr-sm" />
               <span class="text-weight-bold">Drop PCAP / PCAPNG here or click to browse</span>
-              <span class="text-caption text-muted q-ml-sm">
-                Validated by leading bytes, not extension · limit {{ formatBytes(UPLOAD_LIMIT_BYTES) }}
+              <span class="text-caption text-muted q-ml-sm" data-test="upload-limit">
+                Default: 1024 MiB per file (1 GiB; {{ UPLOAD_LIMIT_BYTES }} bytes) payload. Validated by leading bytes,
+                not extension; custom server configuration and rejection are authoritative.
               </span>
             </div>
-
-            <div v-if="store.isUploading" class="row items-center q-gutter-sm q-mt-md" data-test="import-uploading">
-              <q-spinner size="16px" color="primary" />
-              <span class="text-caption">Uploading {{ store.importFile?.name }} …</span>
+            <div class="text-caption text-muted q-mt-xs" data-test="import-lifetime">
+              Browser Files and pending imports exist only in current app/tab memory. Navigating within the app retains
+              them; a full reload requires pending file re-selection. Accepted jobs and history are server-persisted,
+              not restored browser bytes. No automatic resend. The server's narrow multipart allowance is not extra file
+              payload.
             </div>
-
-            <q-banner
-              v-if="rejection && rejection.kind !== 'conflict'"
-              rounded
-              dense
-              class="cd-inline-warn q-mt-md"
-              :data-test="`import-error-${rejection.kind}`"
+            <div
+              v-if="selectionNotice"
+              role="status"
+              class="text-caption text-warning q-mt-xs"
+              data-test="selection-notice"
             >
-              <template #avatar>
-                <q-icon name="error_outline" color="negative" size="18px" />
-              </template>
-              <div class="text-caption text-weight-bold">{{ rejectionHeadline }}</div>
-              <div class="text-caption" data-test="import-error-message">{{ rejection.message }}</div>
-              <div
-                v-if="rejection.kind === 'too-large' && rejection.limitBytes"
-                class="text-caption text-muted"
-                data-test="import-error-limit"
+              {{ selectionNotice }}
+            </div>
+            <div class="row items-center q-gutter-sm q-mt-xs">
+              <span class="cd-fact__label q-mb-none">Import queue</span>
+              <q-btn
+                v-if="!store.importAuthStopped"
+                flat
+                dense
+                no-caps
+                size="sm"
+                color="primary"
+                label="Refresh queue / reconcile"
+                data-test="queue-refresh"
+                @click="store.refreshImportQueue()"
+              />
+              <q-btn
+                v-else
+                flat
+                dense
+                no-caps
+                size="sm"
+                color="primary"
+                label="Resume after login / permissions restored"
+                data-test="queue-resume"
+                @click="store.resumeImportQueue()"
+              />
+            </div>
+            <div v-if="store.importQueueError" role="status" class="text-caption text-negative" data-test="queue-error">
+              {{ store.importQueueError }}
+            </div>
+            <div v-if="store.importAuthStopped" class="text-caption text-warning" data-test="queue-auth-note">
+              Automatic imports are paused. Complete the existing login/permission flow before explicit recovery; this
+              does not bypass authorization.
+            </div>
+            <ul class="cd-import-queue" aria-label="Selected and recovered imports">
+              <li
+                v-for="row in store.importQueue"
+                :key="row.localId"
+                :data-local-id="row.localId"
+                data-test="queue-row"
+                class="cd-import-row"
               >
-                Limit: {{ formatBytes(rejection.limitBytes) }} · your file:
-                {{ formatBytes(store.importFile?.size ?? 0) }}
-              </div>
-            </q-banner>
-
-            <q-banner v-if="conflict" rounded dense class="cd-inline-warn q-mt-md" data-test="import-conflict">
-              <template #avatar>
-                <q-icon name="warning_amber" color="warning" size="18px" />
-              </template>
-              <div class="text-caption" data-test="import-conflict-message">{{ conflict.message }}</div>
-              <div class="text-caption text-weight-bold cd-mono q-mt-xs" data-test="import-conflict-range">
-                {{ formatTimestamp(conflict.conflict?.conflict_start) }} –
-                {{ formatTimestamp(conflict.conflict?.conflict_end) }}
-              </div>
-              <template #action>
-                <q-btn
-                  unelevated
-                  dense
-                  no-caps
-                  color="primary"
-                  label="Cancel"
-                  data-test="import-conflict-dismiss"
-                  @click="onResetImport"
-                />
-                <q-btn
-                  flat
-                  dense
-                  no-caps
-                  color="negative"
-                  label="Import anyway"
-                  data-test="import-force"
-                  :loading="store.isUploading"
-                  @click="onForceImport"
-                />
-              </template>
-            </q-banner>
-
-            <div v-if="activeImport" class="q-mt-md" data-test="import-progress">
-              <div class="row items-center q-gutter-sm">
-                <CdStateBadge :kind="importBadgeKind" :label="activeImport.state" data-test="import-state" />
-                <span class="text-caption cd-mono">{{ activeImport.original_filename ?? store.importFile?.name }}</span>
-                <q-space />
-                <q-btn
-                  v-if="store.isImportRunning"
-                  flat
-                  dense
-                  no-caps
-                  size="sm"
-                  color="negative"
-                  label="Cancel"
-                  data-test="import-cancel"
-                  @click="store.cancelImport()"
-                />
-              </div>
-              <div class="text-caption text-muted q-mt-xs" data-test="import-phase">{{ importPhaseLabel }}</div>
-              <div v-if="notDeliveredYet" class="text-caption text-muted" data-test="import-queued-note">
-                The worker is busy — the job is queued and will be picked up automatically.
-              </div>
-              <div v-if="activeImport.error" class="text-caption text-negative q-mt-xs" data-test="import-job-error">
-                {{ activeImport.error }}
-              </div>
-              <div v-if="importResultLabel" class="text-caption q-mt-xs" data-test="import-result">
-                {{ importResultLabel }}
-              </div>
-              <div v-if="activeImport.state === 'completed'" class="row q-gutter-sm q-mt-sm">
-                <q-btn
-                  flat
-                  dense
-                  no-caps
-                  size="sm"
-                  color="primary"
-                  icon="schedule"
-                  label="Set time range"
-                  data-test="import-jump-to-data"
-                  :disable="!store.completedImportRange"
-                  @click="applyImportRange(store.completedImportRange)"
-                />
-                <q-btn
-                  flat
-                  dense
-                  no-caps
-                  size="sm"
-                  color="primary"
-                  icon="policy"
-                  label="Detection for this range"
-                  data-test="import-run-detection"
-                  @click="onRunDetection"
-                />
-              </div>
+                <div class="cd-import-row__file">
+                  <span class="text-weight-bold" :title="queueFilename(row)" data-test="queue-name">{{
+                    queueFilename(row)
+                  }}</span>
+                  <span class="text-caption text-muted" data-test="queue-size">{{
+                    row.sizeBytes == null ? 'Size unavailable' : formatBytes(row.sizeBytes)
+                  }}</span>
+                  <span v-if="queueIdentity(row)" class="text-caption text-muted">Job: {{ queueIdentity(row) }}</span>
+                </div>
+                <div class="cd-import-row__facts text-caption" aria-live="polite" aria-atomic="true">
+                  <div data-test="queue-upload-state">Browser transfer: {{ row.uploadState }}</div>
+                  <div
+                    v-if="row.uploadState === 'uploading' || row.uploadLoaded != null || row.uploadTotal != null"
+                    data-test="queue-transfer"
+                    role="progressbar"
+                    :aria-label="`Upload transfer for ${queueFilename(row)}`"
+                    aria-valuemin="0"
+                    aria-valuemax="100"
+                    :aria-valuenow="transferPercent(row) ?? undefined"
+                    :aria-valuetext="transferLabel(row)"
+                  >
+                    {{ transferLabel(row) }}
+                  </div>
+                  <div data-test="queue-worker">
+                    Worker:
+                    <CdStateBadge
+                      :kind="stateBadgeKind(queueState(row))"
+                      :label="queueState(row) ?? 'not accepted / unknown'"
+                    />
+                    <span v-if="row.status"> · {{ phaseLabel(row.status) }}</span>
+                  </div>
+                  <div v-if="row.accepted?.delivered === false && queueState(row) === 'queued'" class="text-muted">
+                    The worker is busy — the job is queued and will be picked up automatically.
+                  </div>
+                  <div v-if="row.rejection" class="text-negative">
+                    Upload {{ row.rejection.status || 'error' }}: {{ row.rejection.message }}
+                  </div>
+                  <div v-if="row.rejection?.limitBytes != null" class="text-muted">
+                    Server payload limit: {{ row.rejection.limitBytes }} bytes
+                  </div>
+                  <div v-if="row.rejection?.conflict" class="cd-mono">
+                    Measurement: {{ row.rejection.conflict.measurement }} · Conflict window:
+                    {{ row.rejection.conflict.conflict_start }} – {{ row.rejection.conflict.conflict_end }}
+                  </div>
+                  <div v-if="row.status?.error" class="text-negative">{{ row.status.error }}</div>
+                  <div v-if="row.cancelError" class="text-negative">{{ row.cancelError }}</div>
+                  <div v-if="row.pollError" class="text-warning">{{ row.pollError }}</div>
+                  <div v-if="row.uploadState === 'uncertain'" class="text-warning">
+                    Server acceptance is unverified.
+                    {{
+                      queueIdentity(row)
+                        ? 'Only the observed job identity can be reconciled; no File resend.'
+                        : "Separate durable history cannot prove this file's job identity. Scheduling remains blocked; reconcile explicitly before any re-selection. No metadata-based cancellation or resend."
+                    }}
+                  </div>
+                  <div v-if="row.cancellationRequested" class="text-warning">
+                    Cancellation requested; settlement is not proven by the request.
+                  </div>
+                  <div v-if="row.status?.result">{{ resultLabel(row.status) }}</div>
+                  <div v-if="row.status && importRange(row.status)" class="cd-mono">
+                    Capture range: {{ rangeLabel(row.status) }}
+                  </div>
+                  <div v-if="row.forceConfirmed || row.status?.forced || row.accepted?.forced" class="text-warning">
+                    Overwrite consent applies to this file only.
+                  </div>
+                </div>
+                <div class="cd-import-row__actions">
+                  <q-btn
+                    v-if="cancelLabel(row)"
+                    flat
+                    dense
+                    no-caps
+                    size="sm"
+                    color="negative"
+                    :label="cancelLabel(row)"
+                    :aria-label="`${cancelLabel(row)} for ${queueFilename(row)}`"
+                    :disable="store.importAuthStopped"
+                    data-test="queue-cancel"
+                    @click="store.cancelQueueImport(row.localId)"
+                  />
+                  <q-btn
+                    v-if="row.uploadState === 'conflict' && row.file"
+                    flat
+                    dense
+                    no-caps
+                    size="sm"
+                    color="negative"
+                    label="Import Anyway"
+                    :aria-label="`Import Anyway: ${queueFilename(row)}`"
+                    :disable="store.importAuthStopped"
+                    data-test="queue-force"
+                    @click="onForceImport(row)"
+                  />
+                  <template v-if="row.status?.state === 'completed'">
+                    <q-btn
+                      flat
+                      dense
+                      no-caps
+                      size="sm"
+                      color="primary"
+                      icon="schedule"
+                      label="Set time range"
+                      :aria-label="`Set time range for ${queueFilename(row)}`"
+                      :disable="!importRange(row.status)"
+                      data-test="queue-range"
+                      @click="applyImportRange(importRange(row.status))"
+                    />
+                    <q-btn
+                      flat
+                      dense
+                      no-caps
+                      size="sm"
+                      color="primary"
+                      icon="policy"
+                      label="Detection for this range"
+                      :aria-label="`Detection for this range: ${queueFilename(row)}`"
+                      data-test="queue-detection"
+                      @click="onRunDetection"
+                    />
+                  </template>
+                </div>
+              </li>
+            </ul>
+            <div v-if="store.importQueue.length" class="text-caption text-muted" data-test="queue-cancellation-note">
+              Stopping an upload or requesting cancellation does not undo already written data. Queued, running and
+              cancelling jobs retain the queue barrier until persisted terminal settlement; reconciliation is not
+              retrying a File upload.
             </div>
           </q-card-section>
 
           <q-separator />
           <InsufficientPermissionsNotice :message="store.recentError" />
-          <q-card-section v-if="store.recentError && !isInsufficientPermissionsMessage(store.recentError)" class="q-py-sm q-pb-none">
+          <q-card-section
+            v-if="store.recentError && !isInsufficientPermissionsMessage(store.recentError)"
+            class="q-py-sm q-pb-none"
+          >
             <q-banner rounded dense class="cd-inline-warn" data-test="recent-imports-error">
               <template #avatar>
                 <q-icon name="error_outline" color="negative" size="18px" />
@@ -465,12 +587,17 @@
                   data-test="recent-import-row"
                 >
                   <td>
-                    <div class="row items-baseline no-wrap q-gutter-xs">
-                      <span class="text-weight-bold ellipsis" data-test="recent-import-filename">
+                    <div class="cd-history-file">
+                      <span
+                        class="text-weight-bold"
+                        :title="entry.original_filename ?? 'Unknown capture'"
+                        data-test="recent-import-filename"
+                      >
                         {{ entry.original_filename ?? '—' }}
                       </span>
-                      <span class="text-caption text-muted no-wrap">
-                        {{ entry.size_bytes ? formatBytes(entry.size_bytes) : '—' }} · {{ entry.display_id }}
+                      <span class="text-caption text-muted">
+                        {{ entry.size_bytes != null ? formatBytes(entry.size_bytes) : '—' }} · Job:
+                        {{ entry.display_id }}
                       </span>
                     </div>
                   </td>
@@ -478,13 +605,13 @@
                     {{ rangeLabel(entry) }}
                   </td>
                   <td>
-                    <div class="row items-center no-wrap q-gutter-xs">
+                    <div class="row items-center q-gutter-xs">
                       <CdStateBadge
                         :kind="stateBadgeKind(entry.state)"
                         :label="entry.state"
                         data-test="recent-import-state"
                       />
-                      <span class="text-caption text-muted ellipsis" data-test="recent-import-outcome">
+                      <span class="text-caption text-muted" data-test="recent-import-outcome">
                         {{ outcomeLabel(entry) }}
                       </span>
                     </div>
@@ -532,9 +659,9 @@ import { DOMAIN_ICONS } from '~/composables/useNavigation'
 import { useOperationsRefresh } from '~/composables/useOperationsRefresh'
 import type { PcapImportState, PcapImportStatus } from '~/composables/usePcapImport'
 import { DATA_SOURCE_LABELS, importRange, useDataSourcesStore } from '~/stores/dataSourcesStore'
-import type { SourceId } from '~/stores/dataSourcesStore'
+import type { ImportQueueItem, SourceId } from '~/stores/dataSourcesStore'
 import { useAppStore } from '~/stores/appStore'
-import type { PipelineSource } from '~/types/api'
+import type { CaptureStatus, PipelineSource } from '~/types/api'
 import { isInsufficientPermissionsMessage } from '~/utils/permissions'
 
 /**
@@ -557,15 +684,12 @@ const appStore = useAppStore()
 const $q = useQuasar()
 const operationsRefresh = useOperationsRefresh()
 
-/**
- * Server-side upload ceiling (`PCAP_IMPORT_MAX_UPLOAD_BYTES`, 512 MiB).
- * Shown up front so the limit is known before a large file is chosen; the
- * server remains the authority and answers `413` itself.
- */
-const UPLOAD_LIMIT_BYTES = 536_870_912
+/** Advertised default payload, not enforcement of an unknown custom server setting. */
+const UPLOAD_LIMIT_BYTES = 1_073_741_824
 
 const fileInput = ref<HTMLInputElement | null>(null)
 const isDragOver = ref(false)
+const selectionNotice = ref('')
 
 onMounted(() => {
   operationsRefresh.register(
@@ -573,6 +697,7 @@ onMounted(() => {
     () => store.isLoading,
   )
   void operationsRefresh.refresh()
+  void store.startImportQueue()
 })
 
 onUnmounted(operationsRefresh.unregister)
@@ -619,7 +744,7 @@ const linkLabel = computed(() => {
 const recordingSignal = computed(() => {
   const rec = store.captureStatus?.recording
   if (rec === true) return 'green'
-  if (rec === false) return 'red'
+  if (rec === false) return store.captureStatus?.source_state === 'disabled' ? 'grey' : 'red'
   return 'grey'
 })
 
@@ -638,6 +763,75 @@ const dropsLabel = computed(() => {
 const overflowsLabel = computed(() => {
   const val = store.captureStatus?.overflows
   return val == null ? '—' : String(val)
+})
+
+const captureModeLabel = computed(() => store.captureStatus?.capture_type ?? 'unknown')
+const captureBackendLabel = computed(() => store.captureStatus?.backend ?? 'unknown')
+const captureSourceState = computed(() => store.captureStatus?.source_state ?? 'degraded')
+const captureSourceKind = computed(() => {
+  switch (captureSourceState.value) {
+    case 'recording':
+      return 'ok'
+    case 'blocked':
+      return 'err'
+    case 'waiting':
+    case 'degraded':
+      return 'warn'
+    default:
+      return 'muted'
+  }
+})
+const captureReasonLabels: Record<NonNullable<CaptureStatus['reason_code']>, string> = {
+  none_selected: 'Automatic acquisition intentionally disabled',
+  source_absent: 'Configured source absent',
+  collector_stale: 'Collector observation stale',
+  retry_exhausted: 'Automatic retry budget exhausted',
+  privilege_denied: 'Privilege denied',
+  dependency_unavailable: 'Dependency unavailable',
+  custody_invalid: 'Custody invalid',
+  checkpoint_incompatible: 'Checkpoint incompatible',
+  upstream_unavailable: 'Upstream unavailable',
+}
+const captureReasonLabel = computed(() => {
+  const code = store.captureStatus?.reason_code
+  return code && Object.hasOwn(captureReasonLabels, code) ? captureReasonLabels[code] : 'Unavailable'
+})
+const captureRetryLabel = computed(() => {
+  const status = store.captureStatus
+  if (!status) return 'Unavailable'
+  const facts: string[] = []
+  if (
+    status.retry_attempt != null &&
+    Number.isInteger(status.retry_attempt) &&
+    status.retry_attempt >= 0 &&
+    status.retry_attempt <= 5 &&
+    status.retry_limit === 5
+  )
+    facts.push(`Attempt ${status.retry_attempt}/5`)
+  if (
+    status.retry_in_seconds != null &&
+    Number.isFinite(status.retry_in_seconds) &&
+    status.retry_in_seconds >= 0 &&
+    status.retry_in_seconds <= 16
+  )
+    facts.push(`next in ${status.retry_in_seconds} s`)
+  if (status.retry_exhausted === true) facts.push('exhausted; explicit service recreation resets the budget')
+  if (status.retry_exhausted === false) facts.push('not exhausted')
+  return facts.join(' · ') || 'Unavailable'
+})
+const captureObservationLabel = computed(() => {
+  const age = store.captureStatus?.observation_age_seconds
+  return age != null && Number.isFinite(age) && age >= 0 ? `${age} s since receipt` : 'Unavailable'
+})
+const captureSemantics = computed(() => {
+  if (store.captureStatus?.backend === 'wsl') {
+    return store.captureStatus.capture_type === 'NONE'
+      ? 'Disabled acquisition refers to the receiver/processor only. Remote collector recording is unknown; the Windows collector must be stopped explicitly.'
+      : 'Recording is the supplied current Windows observation; observation age is receipt freshness. Source state describes processor plus current collector readiness, not remote control.'
+  }
+  return store.captureStatus?.backend === 'native'
+    ? 'Native recording describes the local capture process only. A live tcpdump process can coexist with waiting or degraded producer-pair readiness.'
+    : 'Capture backend unavailable; no local or remote recording state is inferred.'
 })
 
 function friendlySourceName(name: string): string {
@@ -776,93 +970,76 @@ const passiveLastSeenLabel = computed(() => {
  */
 const passiveAgeLabel = computed(() => ageLabel(store.passiveDiscovery?.age_seconds ?? null))
 
-/* ── PCAP import (UI-078 Wave D) ─────────────────────────────── */
-
-/** Normalised rejection of the last upload attempt, if any. */
-const rejection = computed(() => store.importRejection)
-
-/** The pending overlap conflict, which alone offers a follow-up action. */
-const conflict = computed(() => store.importConflict)
-
-/**
- * Followed import job: the polled status once available, otherwise the
- * acceptance envelope so the card paints immediately after the upload.
- */
-const activeImport = computed<PcapImportStatus | null>(() => {
-  if (store.importStatus) return store.importStatus
-  const accepted = store.importAccepted
-  if (!accepted) return null
-  return {
-    display_id: accepted.display_id,
-    job_id: accepted.job_id,
-    state: accepted.state,
-    phase_current: null,
-    phase_total: null,
-    phase_label: null,
-    latest_event: null,
-    original_filename: accepted.original_filename,
-    size_bytes: accepted.size_bytes,
-    time_start: accepted.time_start,
-    time_end: accepted.time_end,
-    forced: accepted.forced,
-    started_at: null,
-    ended_at: null,
-    error: null,
-    result: null,
-  }
-})
-
-/**
- * True when the worker was busy at upload time. This is not a failure —
- * the api retries delivery — and must not be rendered as one.
- */
-const notDeliveredYet = computed(
-  () => store.importAccepted?.delivered === false && activeImport.value?.state === 'queued',
-)
-
 /** True once the listing has settled with nothing to show. */
 const isRecentEmpty = computed(() => store.recentLoaded && store.recentImports.length === 0)
 
-/**
- * Short headline naming which kind of rejection occurred, above the
- * server's own message which is always shown verbatim below it.
- */
-const rejectionHeadline = computed(() => {
-  switch (rejection.value?.kind) {
-    case 'unsupported':
-      return 'File is not a valid capture'
-    case 'too-large':
-      return 'File exceeds the upload limit'
-    case 'unauthorized':
-      return 'Not authorized to import'
-    case 'malformed':
-      return 'Upload could not be read'
-    default:
-      return 'Import rejected'
+function queueIdentity(row: ImportQueueItem): string | null {
+  return row.accepted?.display_id ?? row.observedDisplayId ?? row.status?.display_id ?? null
+}
+
+function queueFilename(row: ImportQueueItem): string {
+  // A recovered nameless owner may have its display_id in store metadata;
+  // present that only as job identity, never as an invented filename.
+  if (
+    !row.file &&
+    !row.status?.original_filename &&
+    !row.accepted?.original_filename &&
+    row.name === queueIdentity(row)
+  )
+    return 'Unknown capture'
+  return row.name
+}
+
+function queueState(row: ImportQueueItem): PcapImportState | undefined {
+  return row.status?.state ?? row.accepted?.state
+}
+
+function cancelLabel(row: ImportQueueItem): string | undefined {
+  const state = queueState(row)
+  if (state && ['completed', 'failed', 'cancelled', 'rejected'].includes(state)) return undefined
+  if (queueIdentity(row)) return state === 'cancelling' ? 'Reconcile cancellation' : 'Request cancellation'
+  if (row.uploadState === 'uploading') return 'Stop upload'
+  if (['pending', 'conflict', 'failed'].includes(row.uploadState)) return 'Cancel'
+  return undefined
+}
+
+function transferPercent(row: ImportQueueItem): number | null {
+  if (row.uploadLoaded == null || row.uploadTotal == null || row.uploadTotal <= 0) return null
+  return (row.uploadLoaded / row.uploadTotal) * 100
+}
+
+function transferLabel(row: ImportQueueItem): string {
+  const percent = transferPercent(row)
+  const bytes = row.uploadLoaded == null ? 'loaded unavailable' : formatBytes(row.uploadLoaded)
+  if (percent == null) {
+    const total = row.uploadTotal == null ? 'total unavailable' : `${formatBytes(row.uploadTotal)} total`
+    return `Upload transfer indeterminate (${bytes}; ${total}). Request bytes include multipart overhead.`
   }
-})
+  const completion =
+    percent === 100
+      ? row.accepted || row.status
+        ? 'Transfer complete; worker state is separate'
+        : 'Transfer complete; waiting for acceptance'
+      : `Upload transfer ${percent.toFixed(1)}%`
+  return `${completion}: ${bytes} / ${formatBytes(row.uploadTotal!)} request bytes, including multipart overhead.`
+}
 
 /** Progress line: phase counter plus the worker's latest event text. */
-const importPhaseLabel = computed(() => {
-  const job = activeImport.value
-  if (!job) return ''
+function phaseLabel(job: PcapImportStatus): string {
   const phase =
     job.phase_current != null && job.phase_total != null ? `Phase ${job.phase_current}/${job.phase_total}` : null
   return [phase, job.phase_label, job.latest_event].filter(Boolean).join(' · ') || 'Waiting for the worker …'
-})
+}
 
 /** Point/record counts of a completed import, or an empty string. */
-const importResultLabel = computed(() => {
-  const result = activeImport.value?.result
+function resultLabel(job: PcapImportStatus): string {
+  const result = job.result
   if (!result) return ''
   const parts: string[] = []
   if (result.records_processed != null) parts.push(`${result.records_processed.toLocaleString('en-US')} Records`)
   if (result.points_written != null) parts.push(`${result.points_written.toLocaleString('en-US')} points`)
   return parts.join(' · ')
-})
-
-/** Badge kind for the followed job's state. */
-const importBadgeKind = computed(() => stateBadgeKind(activeImport.value?.state))
+}
 
 /**
  * Map an import lifecycle state onto a badge kind.
@@ -943,7 +1120,6 @@ function outcomeLabel(entry: PcapImportStatus): string {
 
 /** Open the hidden file input from the dropzone. */
 function openFilePicker(): void {
-  if (store.isUploading) return
   fileInput.value?.click()
 }
 
@@ -954,8 +1130,11 @@ function openFilePicker(): void {
  */
 function onFilePicked(event: Event): void {
   const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (file) void startUpload(file)
+  const files = Array.from(input.files ?? [])
+  if (files.length) {
+    selectionNotice.value = ''
+    store.enqueueImports(files)
+  }
   // Reset so re-picking the same file fires `change` again.
   input.value = ''
 }
@@ -967,66 +1146,29 @@ function onFilePicked(event: Event): void {
  */
 function onFileDropped(event: DragEvent): void {
   isDragOver.value = false
-  const file = event.dataTransfer?.files?.[0]
-  if (file) void startUpload(file)
-}
-
-/**
- * Upload a capture and begin following the job.
- *
- * No client-side content check is performed: the server validates by magic
- * bytes and owns the size limit, and a browser-side gate would only be a
- * convenience an operator could bypass.
- *
- * @param file - The chosen capture.
- */
-async function startUpload(file: File): Promise<void> {
-  const accepted = await store.uploadCapture(file)
-  if (accepted) followImport()
-}
-
-/** Re-post the retained capture past an overlap conflict. */
-async function onForceImport(): Promise<void> {
-  const accepted = await store.forceRetryUpload()
-  if (accepted) followImport()
-}
-
-/** Clear the current upload and any pending conflict. */
-function onResetImport(): void {
-  store.resetImport()
-}
-
-let importPoll: ReturnType<typeof setInterval> | null = null
-
-/**
- * Poll the followed job until it reaches a terminal state.
- *
- * Polling, not SSE: `/api/v1/operations/jobs/{job_id}/events` emits only on
- * a *state* change, so it would show nothing between `running` and the
- * terminal state — the phase and latest-event progress an operator needs
- * lives on the status endpoint alone.
- */
-function followImport(): void {
-  stopFollowing()
-  importPoll = setInterval(() => {
-    void (async () => {
-      await store.refreshImportStatus()
-      if (!store.isImportRunning) {
-        stopFollowing()
-        await store.fetchRecentImports()
-      }
-    })()
-  }, 2000)
-}
-
-function stopFollowing(): void {
-  if (importPoll !== null) {
-    clearInterval(importPoll)
-    importPoll = null
+  const files = Array.from(event.dataTransfer?.files ?? [])
+  if (!files.length) {
+    selectionNotice.value = 'No files added: this drop contains no usable File entries.'
+    return
   }
+  selectionNotice.value = ''
+  store.enqueueImports(files)
 }
 
-onUnmounted(stopFollowing)
+/** Consent never applies to another row or a batch. Quasar treats this as plain text. */
+function onForceImport(row: ImportQueueItem): void {
+  const conflict = row.rejection?.conflict
+  if (!conflict || !row.file || row.uploadState !== 'conflict' || store.importAuthStopped) return
+  $q.dialog({
+    title: `Import Anyway: ${queueFilename(row)}`,
+    message:
+      `Import ${queueFilename(row)} despite existing data in ${conflict.measurement}, ` +
+      `from ${conflict.conflict_start} to ${conflict.conflict_end}? Overwritten data cannot be undone. ` +
+      'This consent applies only to this file.',
+    cancel: true,
+    ok: { label: 'Import Anyway', color: 'negative' },
+  }).onOk(() => store.confirmImportForce(row.localId))
+}
 
 /**
  * Switch the global time filter to an imported capture's window.
@@ -1121,10 +1263,74 @@ function onRunDetection(): void {
     border-color: var(--q-primary);
     background-color: rgba(var(--q-primary-rgb, 25, 118, 210), 0.06);
   }
+}
 
-  &--busy {
-    opacity: 0.65;
-    cursor: progress;
+.cd-import-queue {
+  list-style: none;
+  padding: 0;
+  margin: 4px 0;
+}
+
+.cd-import-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(0, 1fr);
+  gap: 6px 12px;
+  padding: 8px 0;
+  border-top: 1px solid var(--cd-border);
+  overflow-wrap: anywhere;
+
+  &__file,
+  &__facts,
+  &__actions {
+    min-width: 0;
+  }
+
+  &__file,
+  &__actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  :deep(.q-btn__content) {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+.cd-history-file {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  min-width: 0;
+}
+
+@media (max-width: 599px) {
+  .cd-import-row {
+    grid-template-columns: minmax(0, 1fr);
+
+    &__actions {
+      flex-direction: row;
+      flex-wrap: wrap;
+    }
+  }
+
+  .cd-import-table {
+    :deep(thead) {
+      display: none;
+    }
+
+    :deep(tr) {
+      display: block;
+      border-bottom: 1px solid var(--cd-border);
+    }
+
+    :deep(td:nth-child(n)) {
+      display: block;
+      width: 100%;
+      text-align: left;
+    }
   }
 }
 
@@ -1132,9 +1338,8 @@ function onRunDetection(): void {
  * Recent-imports table inside the merged full-width card.
  *
  * `table-layout: fixed` plus explicit column shares makes the four columns
- * share the available width instead of each sizing to its content, which is
- * what pushed the ACTIONS column out of the old half-width card and produced
- * a horizontal scrollbar. Overflow is therefore impossible by construction.
+ * share available width. Wrapping and the mobile stacked layout reduce long
+ * filename/action pressure; actual browser geometry remains an acceptance gate.
  */
 .cd-import-table {
   :deep(table) {
@@ -1148,8 +1353,6 @@ function onRunDetection(): void {
     white-space: normal;
   }
 
-  /* The merged card must not be taller than the two cards it replaced. The
-     extra width is spent on single-line rows instead of extra height. */
   :deep(th) {
     height: auto;
     padding-top: 2px;
@@ -1165,6 +1368,11 @@ function onRunDetection(): void {
   :deep(td .q-btn) {
     padding: 0 6px;
     min-height: 22px;
+  }
+
+  :deep(.q-btn__content) {
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   :deep(th:nth-child(1)),

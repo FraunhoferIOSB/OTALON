@@ -39,6 +39,15 @@ interface StoreStub {
   staleBanner: null
   passiveBadge: { label: string; kind: 'ok' | 'warn' | 'muted' }
   loadAll: () => Promise<void>
+  importQueue: never[]
+  importQueueError: null
+  importAuthStopped: false
+  recentImports: never[]
+  recentError: null
+  recentLoaded: true
+  startImportQueue: () => Promise<void>
+  refreshImportQueue: () => Promise<void>
+  resumeImportQueue: () => Promise<void>
 }
 
 const SEEDER_STATUS: PassiveSeederStatus = {
@@ -77,9 +86,19 @@ const storeStub: StoreStub = {
   staleBanner: null,
   passiveBadge: { label: 'active', kind: 'ok' },
   loadAll: vi.fn().mockResolvedValue(undefined),
+  importQueue: [],
+  importQueueError: null,
+  importAuthStopped: false,
+  recentImports: [],
+  recentError: null,
+  recentLoaded: true,
+  startImportQueue: vi.fn().mockResolvedValue(undefined),
+  refreshImportQueue: vi.fn().mockResolvedValue(undefined),
+  resumeImportQueue: vi.fn().mockResolvedValue(undefined),
 }
 
-vi.mock('~/stores/dataSourcesStore', () => ({
+vi.mock('~/stores/dataSourcesStore', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('~/stores/dataSourcesStore')>()),
   DATA_SOURCE_LABELS: { conn: 'Connections', mac: 'Assets', proto: 'Protocols' },
   useDataSourcesStore: () => storeStub,
 }))

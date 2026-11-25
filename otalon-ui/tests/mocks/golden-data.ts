@@ -230,6 +230,15 @@ export const GOLDEN_CAPTURE_STATUS: CaptureStatus = {
   recording: true,
   drops_24h_pct: null,
   overflows: null,
+  capture_type: 'LIVE',
+  backend: 'native',
+  source_state: 'recording',
+  reason_code: null,
+  retry_attempt: 0,
+  retry_limit: 5,
+  retry_in_seconds: null,
+  retry_exhausted: false,
+  observation_age_seconds: null,
 }
 
 export const GOLDEN_PASSIVE_DISCOVERY: PassiveDiscoveryStatus = {
