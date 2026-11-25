@@ -12,8 +12,12 @@ import os
 import re
 import shutil
 import sqlite3
+import stat
+import struct
+import tempfile
 import threading
 import time
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 
 from .pcap import validate
@@ -22,10 +26,321 @@ IDENTITY = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 HASH = re.compile(r"^[0-9a-f]{64}$")
 MAX_STATE = 96_000_000
 MAX_PAYLOAD = 32_000_000
+DEFAULT_CUSTODY_BYTES = 2_000_000_000
+COPY_CHUNK = 65536
+
+
+class HistoricalCustodyError(ValueError):
+    """Existing custody cannot be read safely; never repair it for a read."""
+
+
+class EmptyLedger:
+    """Truthful read view of an uninitialized volume, with no SQLite connection."""
+
+    def __init__(self, root, *, unavailable=False):
+        self.root = root
+        self.raw = root / "raw"
+        self._unavailable = unavailable
+
+    def _read_existing(self):
+        if self._unavailable:
+            raise HistoricalCustodyError("Historical custody unavailable")
+
+    def close(self):
+        pass
+
+    def receipt(self, run, ordinal):
+        self._read_existing()
+        return None
+
+    def load_checkpoint(self):
+        self._read_existing()
+        return None
+
+    def pending_batches(self):
+        self._read_existing()
+        return []
+
+    def committed_batches(self, after, limit=50):
+        self._read_existing()
+        return []
+
+    def observation(self):
+        return None
+
+    def historical_status(self):
+        self._read_existing()
+        return {"received": 0, "pending_writes": 0, "checkpoint_present": False}
 
 
 class Ledger:
-    def __init__(self, root: Path, max_bytes: int = 2_000_000_000, min_free: int = 0):
+    @classmethod
+    def open_existing_readonly(cls, root):
+        """Open only existing custody, deferring failures to historical operations."""
+        root = Path(root).absolute()
+        for part in (root, *root.parents):
+            if part.is_symlink() or part.exists() and not part.is_dir():
+                raise ValueError("unsafe ledger root")
+        for name in ("raw", "progress.sqlite3", "progress.sqlite3-wal", "progress.sqlite3-shm", "pcap_index.json"):
+            path = root / name
+            if (
+                path.is_symlink()
+                or path.exists()
+                and (not path.is_dir() if name == "raw" else not path.is_file() or path.stat().st_nlink != 1)
+            ):
+                raise ValueError("unsafe ledger files")
+        if not (root / "progress.sqlite3").exists():
+            return EmptyLedger(
+                root,
+                unavailable=(
+                    any((root / name).exists() for name in ("progress.sqlite3-wal", "progress.sqlite3-shm"))
+                    or (root / "raw").is_dir()
+                    and any((root / "raw").iterdir())
+                ),
+            )
+        view = cls.__new__(cls)
+        view.root, view.raw = root, root / "raw"
+        view.lock = threading.RLock()
+        view._readonly = True
+        view._observation_at = None
+        view.db = None
+        view._scratch = None
+        view._closed = False
+        return view
+
+    def _snapshot_existing(self):
+        """Acquire once from ordinary file descriptors, never original SQLite.
+
+        Two byte-identical passes and unchanged POSIX identities/timestamps are
+        conservative acquisition checks, not a general concurrent/VFS proof.
+        SQLite and WAL validation happen only on the resulting owned copy.
+        """
+
+        def signature(info):
+            return (
+                info.st_dev,
+                info.st_ino,
+                info.st_mode,
+                info.st_nlink,
+                info.st_size,
+                info.st_mtime_ns,
+                info.st_ctime_ns,
+            )
+
+        def unsafe():
+            raise HistoricalCustodyError("Historical custody unavailable")
+
+        with ExitStack() as handles:
+            flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+            directory = os.open(self.root.anchor, flags)
+            handles.callback(os.close, directory)
+            directories = []
+            for name in self.root.parts[1:]:
+                before = os.stat(name, dir_fd=directory, follow_symlinks=False)
+                child = os.open(name, flags, dir_fd=directory)
+                handles.callback(os.close, child)
+                if not stat.S_ISDIR(before.st_mode) or signature(os.fstat(child)) != signature(before):
+                    unsafe()
+                directories.append((directory, name, child, signature(before)[:3]))
+                directory = child
+
+            root_signature = signature(os.fstat(directory))
+
+            names = ("progress.sqlite3", "progress.sqlite3-wal", "progress.sqlite3-shm", "raw")
+            originals = {}
+            sources = {}
+            total = 0
+            for name in names:
+                try:
+                    info = os.stat(name, dir_fd=directory, follow_symlinks=False)
+                except FileNotFoundError:
+                    if name == "progress.sqlite3":
+                        unsafe()
+                    originals[name] = None
+                    continue
+                if name == "raw":
+                    if not stat.S_ISDIR(info.st_mode):
+                        unsafe()
+                elif not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                    unsafe()
+                originals[name] = signature(info)
+                if name in names[:2]:
+                    total += info.st_size
+                    sources[name] = info
+            if total > DEFAULT_CUSTODY_BYTES:
+                unsafe()
+
+            descriptors = {}
+            for name, info in sources.items():
+                fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+                handles.callback(os.close, fd)
+                if signature(os.fstat(fd)) != signature(info):
+                    unsafe()
+                descriptors[name] = fd
+
+            def unchanged():
+                for parent, name, child, expected in directories:
+                    if (
+                        signature(os.stat(name, dir_fd=parent, follow_symlinks=False))[:3] != expected
+                        or signature(os.fstat(child))[:3] != expected
+                    ):
+                        unsafe()
+                if signature(os.fstat(directory)) != root_signature:
+                    unsafe()
+                for name, expected in originals.items():
+                    try:
+                        current = signature(os.stat(name, dir_fd=directory, follow_symlinks=False))
+                    except FileNotFoundError:
+                        current = None
+                    if current != expected:
+                        unsafe()
+                for name, fd in descriptors.items():
+                    if signature(os.fstat(fd)) != originals[name]:
+                        unsafe()
+
+            unchanged()
+            temporary_parent = Path(tempfile.gettempdir()).resolve()
+            if temporary_parent.is_relative_to(self.root):
+                unsafe()
+            self._scratch = tempfile.TemporaryDirectory(prefix="otalon-custody-read-", dir=temporary_parent)
+            scratch = Path(self._scratch.name)
+            if scratch.is_relative_to(self.root):
+                unsafe()
+            digests = {}
+            for copying in (True, False):
+                for name, fd in descriptors.items():
+                    os.lseek(fd, 0, os.SEEK_SET)
+                    digest = hashlib.sha256()
+                    remaining = sources[name].st_size
+                    with (scratch / name).open("xb") if copying else ExitStack() as output:
+                        while remaining:
+                            block = os.read(fd, min(COPY_CHUNK, remaining))
+                            if not block:
+                                unsafe()
+                            remaining -= len(block)
+                            digest.update(block)
+                            if copying:
+                                output.write(block)
+                        if os.read(fd, 1):
+                            unsafe()
+                    if copying:
+                        digests[name] = digest.digest()
+                    elif digest.digest() != digests[name]:
+                        unsafe()
+                unchanged()
+            self._validate_snapshot_wal(scratch)
+            unchanged()
+            return scratch / "progress.sqlite3"
+
+    @staticmethod
+    def _validate_snapshot_wal(scratch):
+        """Refuse torn/reset/corrupt WAL rather than silently losing its commits."""
+        wal = scratch / "progress.sqlite3-wal"
+        if not wal.exists() or wal.stat().st_size == 0:
+            return
+        with wal.open("rb") as stream:
+            header = stream.read(32)
+            if len(header) != 32:
+                raise HistoricalCustodyError("Historical custody unavailable")
+            magic, version, page_size, _, salt1, salt2, check1, check2 = struct.unpack(">8I", header)
+            if (
+                magic not in (0x377F0682, 0x377F0683)
+                or version != 3007000
+                or page_size < 512
+                or page_size > 65536
+                or page_size & (page_size - 1)
+                or (wal.stat().st_size - 32) % (24 + page_size)
+            ):
+                raise HistoricalCustodyError("Historical custody unavailable")
+            with (scratch / "progress.sqlite3").open("rb") as main:
+                db_header = main.read(100)
+            db_page_size = int.from_bytes(db_header[16:18], "big")
+            if db_page_size == 1:
+                db_page_size = 65536
+            if db_header[:16] != b"SQLite format 3\x00" or db_page_size != page_size:
+                raise HistoricalCustodyError("Historical custody unavailable")
+            endian = "<2I" if magic == 0x377F0682 else ">2I"
+            sums = (0, 0)
+
+            def checksum(block):
+                nonlocal sums
+                first, second = sums
+                for x, y in struct.iter_unpack(endian, block):
+                    first = (first + x + second) & 0xFFFFFFFF
+                    second = (second + y + first) & 0xFFFFFFFF
+                sums = (first, second)
+
+            checksum(header[:24])
+            if sums != (check1, check2):
+                raise HistoricalCustodyError("Historical custody unavailable")
+            while frame := stream.read(24):
+                page, _, frame_salt1, frame_salt2, check1, check2 = struct.unpack(">6I", frame)
+                if page == 0 or (frame_salt1, frame_salt2) != (salt1, salt2):
+                    raise HistoricalCustodyError("Historical custody unavailable")
+                checksum(frame[:8])
+                checksum(stream.read(page_size))
+                if sums != (check1, check2):
+                    raise HistoricalCustodyError("Historical custody unavailable")
+
+    def _read_existing(self):
+        if not getattr(self, "_readonly", False):
+            return
+        if self._closed:
+            raise HistoricalCustodyError("Historical custody unavailable")
+        if self.db is None:
+            try:
+                path = self._snapshot_existing()
+                self.db = sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, check_same_thread=False)
+                self.db.row_factory = sqlite3.Row
+                self.db.execute("PRAGMA query_only=ON")
+                versions = self.db.execute("SELECT version FROM metadata LIMIT 2").fetchall()
+                if len(versions) != 1 or versions[0][0] != 1:
+                    raise HistoricalCustodyError("Historical custody unavailable")
+                if [row[0] for row in self.db.execute("PRAGMA quick_check")] != ["ok"]:
+                    raise HistoricalCustodyError("Historical custody unavailable")
+                required = {
+                    "runs": "id,predecessor,seq",
+                    "run_config": "run,interface,fingerprint",
+                    "chunks": "id,run,ordinal,hash,size,path,packets,first_ns,last_ns,consumed",
+                    "checkpoint": "id,state",
+                    "batches": "id,chunk,payload,committed",
+                    "run_ends": "run,last_ordinal",
+                    "observations": "id,value,seen",
+                    "consumer_ack": "module,batch",
+                    "points": "identity,fields",
+                }
+                for table, columns in required.items():
+                    self.db.execute(f"SELECT {columns} FROM {table} LIMIT 0")
+            except BaseException as exc:
+                self.close()
+                if isinstance(exc, (sqlite3.Error, OSError, ValueError)):
+                    raise HistoricalCustodyError("Historical custody unavailable") from exc
+                raise
+
+    @contextmanager
+    def _historical_read(self):
+        with self.lock:
+            try:
+                self._read_existing()
+                yield
+            except BaseException:
+                if getattr(self, "_readonly", False):
+                    self.close()
+                raise
+
+    def historical_status(self):
+        with self._historical_read():
+            return {
+                "received": self.db.execute("SELECT count(*) FROM chunks").fetchone()[0],
+                "pending_writes": self.db.execute("SELECT count(*) FROM batches WHERE committed=0").fetchone()[0],
+                "checkpoint_present": self.load_checkpoint() is not None,
+            }
+
+    def _require_writable(self):
+        if getattr(self, "_readonly", False):
+            raise ValueError("read-only custody")
+
+    def __init__(self, root: Path, max_bytes: int = DEFAULT_CUSTODY_BYTES, min_free: int = 0):
         self.root = Path(root).absolute()
         for part in (self.root, *self.root.parents):
             if part.is_symlink():
@@ -39,7 +354,8 @@ class Ledger:
         self.lock = threading.RLock()
         self.db = sqlite3.connect(self.root / "progress.sqlite3", check_same_thread=False)
         self.db.row_factory = sqlite3.Row
-        self.db.executescript("""
+        self.db.executescript(
+            """
 PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON;
 CREATE TABLE IF NOT EXISTS metadata(version INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS runs(id TEXT PRIMARY KEY,
@@ -69,7 +385,8 @@ CREATE TABLE IF NOT EXISTS run_ends(run TEXT PRIMARY KEY REFERENCES runs(id), la
 CREATE TABLE IF NOT EXISTS observations(id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL, seen REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS consumer_ack(module TEXT PRIMARY KEY, batch INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS points(identity TEXT PRIMARY KEY,fields TEXT NOT NULL);
-""")
+"""
+        )
         row = self.db.execute("SELECT version FROM metadata").fetchone()
         if row is None:
             self.db.execute("INSERT INTO metadata VALUES(1)")
@@ -81,9 +398,20 @@ CREATE TABLE IF NOT EXISTS points(identity TEXT PRIMARY KEY,fields TEXT NOT NULL
         self._observation_at: float | None = None
 
     def close(self):
-        self.db.close()
+        with self.lock:
+            try:
+                if self.db is not None:
+                    self.db.close()
+            finally:
+                self.db = None
+                if getattr(self, "_readonly", False):
+                    self._closed = True
+                    if self._scratch is not None:
+                        self._scratch.cleanup()
+                        self._scratch = None
 
     def register_run(self, run: str, predecessor: str | None, interface: str = "fixture", fingerprint: str = ""):
+        self._require_writable()
         if not IDENTITY.fullmatch(run) or predecessor is not None and not IDENTITY.fullmatch(predecessor):
             raise ValueError("invalid run")
         if not interface or len(interface) > 256 or fingerprint and not HASH.fullmatch(fingerprint):
@@ -110,6 +438,7 @@ CREATE TABLE IF NOT EXISTS points(identity TEXT PRIMARY KEY,fields TEXT NOT NULL
             self.db.execute("INSERT INTO run_config VALUES(?,?,?)", (run, interface, fingerprint))
 
     def receive(self, run: str, ordinal: int, data: bytes):
+        self._require_writable()
         if ordinal < 0 or ordinal > 2**31 - 1 or not IDENTITY.fullmatch(run):
             raise ValueError("invalid identity")
         count, first, last = validate(data)
@@ -154,10 +483,24 @@ CREATE TABLE IF NOT EXISTS points(identity TEXT PRIMARY KEY,fields TEXT NOT NULL
             return {"id": ident, "hash": digest, "accepted": True}
 
     def receipt(self, run, ordinal):
-        with self.lock:
+        with self._historical_read():
             row = self.db.execute("SELECT * FROM chunks WHERE run=? AND ordinal=?", (run, ordinal)).fetchone()
             if not row:
                 return None
+            if getattr(self, "_readonly", False):
+                path = Path(row["path"])
+                if path.parent != self.raw or path.name != "rx_" + row["id"][:40] + ".pcap":
+                    raise HistoricalCustodyError("unsafe custody path")
+                if path.is_symlink() or not path.is_file() or path.stat().st_nlink != 1:
+                    raise HistoricalCustodyError("unsafe custody path")
+                if path.stat().st_size != row["size"]:
+                    raise HistoricalCustodyError("Historical custody unavailable")
+                digest = hashlib.sha256()
+                with path.open("rb") as stream:
+                    while block := stream.read(65536):
+                        digest.update(block)
+                if digest.hexdigest() != row["hash"]:
+                    raise HistoricalCustodyError("Historical custody unavailable")
             pending = self.db.execute("SELECT 1 FROM batches WHERE chunk=? AND committed=0", (row["id"],)).fetchone()
             return {
                 "id": row["id"],
@@ -168,7 +511,7 @@ CREATE TABLE IF NOT EXISTS points(identity TEXT PRIMARY KEY,fields TEXT NOT NULL
             }
 
     def next_chunk(self):
-        with self.lock:
+        with self._historical_read():
             for run in self.db.execute("SELECT * FROM runs ORDER BY seq"):
                 consumed = self.db.execute(
                     "SELECT MAX(ordinal) FROM chunks WHERE run=? AND consumed=1", (run["id"],)
@@ -183,6 +526,7 @@ CREATE TABLE IF NOT EXISTS points(identity TEXT PRIMARY KEY,fields TEXT NOT NULL
             return None
 
     def close_run(self, run, last_ordinal):
+        self._require_writable()
         if last_ordinal < -1:
             raise ValueError("invalid final ordinal")
         with self.lock, self.db:
@@ -197,10 +541,12 @@ CREATE TABLE IF NOT EXISTS points(identity TEXT PRIMARY KEY,fields TEXT NOT NULL
             self.db.execute("INSERT OR IGNORE INTO run_ends VALUES(?,?)", (run, last_ordinal))
 
     def mark_consumed(self, ident):
+        self._require_writable()
         with self.lock, self.db:
             self.db.execute("UPDATE chunks SET consumed=1 WHERE id=?", (ident,))
 
     def prepare(self, ident, state, payload):
+        self._require_writable()
         state_json = json.dumps(state, separators=(",", ":"), allow_nan=False)
         payload_json = json.dumps(payload, separators=(",", ":"), allow_nan=False)
         if len(state_json) > MAX_STATE or len(payload_json) > MAX_PAYLOAD:
@@ -239,23 +585,24 @@ CREATE TABLE IF NOT EXISTS points(identity TEXT PRIMARY KEY,fields TEXT NOT NULL
             self.db.execute("UPDATE chunks SET consumed=1 WHERE id=?", (ident,))
 
     def load_checkpoint(self):
-        with self.lock:
+        with self._historical_read():
             row = self.db.execute("SELECT state FROM checkpoint WHERE id=1").fetchone()
             return json.loads(row[0]) if row else None
 
     def pending_batches(self):
-        with self.lock:
+        with self._historical_read():
             return [
                 dict(r, payload=json.loads(r["payload"]))
                 for r in self.db.execute("SELECT * FROM batches WHERE committed=0 ORDER BY id LIMIT 2")
             ]
 
     def commit_batch(self, ident):
+        self._require_writable()
         with self.lock, self.db:
             self.db.execute("UPDATE batches SET committed=1 WHERE id=?", (ident,))
 
     def committed_batches(self, after: int, limit: int = 50):
-        with self.lock:
+        with self._historical_read():
             return [
                 dict(r, payload=json.loads(r["payload"]))
                 for r in self.db.execute(
@@ -265,6 +612,7 @@ CREATE TABLE IF NOT EXISTS points(identity TEXT PRIMARY KEY,fields TEXT NOT NULL
             ]
 
     def observe(self, value):
+        self._require_writable()
         with self.lock, self.db:
             self.db.execute(
                 "INSERT INTO observations VALUES(1,?,?) "

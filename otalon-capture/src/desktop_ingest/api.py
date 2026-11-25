@@ -6,11 +6,15 @@ import asyncio
 import hashlib
 import secrets
 import sqlite3
+from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
+
+from capture_runtime import CaptureIntent
+from capture_settings_base import OperatorAuthSettings
 
 
 class RunRequest(BaseModel):
@@ -32,16 +36,106 @@ class Observation(BaseModel):
     recording: bool
 
 
-def create_ingest_app(ledger, source_key, operator_key, app=None, max_upload=32_000_000):
-    if not source_key or not operator_key or source_key == operator_key:
+def create_ingest_app(
+    ledger,
+    source_key,
+    operator_key,
+    app=None,
+    max_upload=32_000_000,
+    *,
+    intent=CaptureIntent.LIVE,
+    source_key_file=None,
+):
+    disabled = CaptureIntent(intent) is CaptureIntent.NONE
+    if not disabled and (not source_key or not operator_key or source_key == operator_key):
         raise ValueError("separate source/operator credentials required")
     app = app or FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
     gate = asyncio.Lock()
 
     def auth(request, key, header):
+        if not key:
+            raise HTTPException(503, "Credential unavailable")
         supplied = request.headers.get(header, "")
         if not secrets.compare_digest(supplied.encode(), key.encode()):
             raise HTTPException(401, "Invalid or missing credential")
+
+    def receipt_key():
+        if not disabled:
+            return source_key
+        if source_key_file is None:
+            raise HTTPException(503, "Source receipt authentication unavailable")
+        try:
+            path = Path(source_key_file).absolute()
+            if any(part.is_symlink() for part in (path, *path.parents)) or not path.is_file():
+                raise ValueError("unsafe source key file")
+            key = path.read_text().strip()
+            operator_auth = OperatorAuthSettings.from_env()
+            if len(key) < 32 or key == operator_key or operator_auth.matches(key):
+                raise ValueError("separate source credential required")
+        except (OSError, ValueError) as exc:
+            raise HTTPException(503, "Source receipt authentication unavailable") from exc
+        return key
+
+    def operator_history_auth(request):
+        if operator_key:
+            auth(request, operator_key, "X-API-Key")
+        else:
+            operator_auth = OperatorAuthSettings.from_env()
+            if not operator_auth.is_configured:
+                raise HTTPException(503, "API key authentication unavailable")
+            if not operator_auth.matches(request.headers.get("X-API-Key", "")):
+                raise HTTPException(401, "Invalid or missing credential")
+
+    @app.get("/ingest/v1/runs/{run}/chunks/{ordinal}")
+    def receipt(run: str, ordinal: int, request: Request):
+        auth(request, receipt_key(), "X-Source-Key")
+        try:
+            value = ledger.receipt(run, ordinal)
+        except (OSError, sqlite3.Error, ValueError, TypeError, KeyError) as exc:
+            if not disabled:
+                raise
+            raise HTTPException(503, "Historical custody unavailable") from exc
+        if value is None:
+            raise HTTPException(404, "receipt not found")
+        return value
+
+    @app.get("/internal/continuous/batches")
+    def batches(request: Request, after: int = 0, limit: int = 1):
+        operator_history_auth(request)
+        try:
+            return {"batches": ledger.committed_batches(after, min(limit, 1))}
+        except (OSError, sqlite3.Error, ValueError, TypeError, KeyError) as exc:
+            if not disabled:
+                raise
+            raise HTTPException(503, "Historical custody unavailable") from exc
+
+    @app.get("/internal/continuous/status")
+    def status(request: Request):
+        operator_history_auth(request)
+        try:
+            return ledger.historical_status()
+        except (OSError, sqlite3.Error, ValueError, TypeError, KeyError) as exc:
+            if not disabled:
+                raise
+            raise HTTPException(503, "Historical custody unavailable") from exc
+
+    if disabled:
+
+        async def refuse(request: Request):
+            raise HTTPException(
+                503,
+                "Automatic capture is disabled (CAPTURE_TYPE=NONE); stop the Windows collector explicitly. "
+                "Pending custody is retained.",
+            )
+
+        for path, method in (
+            ("/ingest/v1/runs/{run}", "PUT"),
+            ("/ingest/v1/runs/{run}/end", "POST"),
+            ("/ingest/v1/runs/{run}/chunks/{ordinal}", "PUT"),
+            ("/ingest/v1/observation", "POST"),
+        ):
+            app.add_api_route(path, refuse, methods=[method])
+        return app
 
     @app.put("/ingest/v1/runs/{run}")
     def register(run: str, body: RunRequest, request: Request):
@@ -60,14 +154,6 @@ def create_ingest_app(ledger, source_key, operator_key, app=None, max_upload=32_
         except (ValueError, sqlite3.IntegrityError) as exc:
             raise HTTPException(409, "run end conflict") from exc
         return {"closed": True, "logical_stream_end": False}
-
-    @app.get("/ingest/v1/runs/{run}/chunks/{ordinal}")
-    def receipt(run: str, ordinal: int, request: Request):
-        auth(request, source_key, "X-Source-Key")
-        value = ledger.receipt(run, ordinal)
-        if value is None:
-            raise HTTPException(404, "receipt not found")
-        return value
 
     @app.put("/ingest/v1/runs/{run}/chunks/{ordinal}")
     async def upload(run: str, ordinal: int, request: Request):
@@ -119,20 +205,5 @@ def create_ingest_app(ledger, source_key, operator_key, app=None, max_upload=32_
         auth(request, source_key, "X-Source-Key")
         ledger.observe(body.model_dump())
         return {"observed": True}
-
-    @app.get("/internal/continuous/batches")
-    def batches(request: Request, after: int = 0, limit: int = 1):
-        auth(request, operator_key, "X-API-Key")
-        return {"batches": ledger.committed_batches(after, min(limit, 1))}
-
-    @app.get("/internal/continuous/status")
-    def status(request: Request):
-        auth(request, operator_key, "X-API-Key")
-        with ledger.lock:
-            return {
-                "received": ledger.db.execute("SELECT count(*) FROM chunks").fetchone()[0],
-                "pending_writes": ledger.db.execute("SELECT count(*) FROM batches WHERE committed=0").fetchone()[0],
-                "checkpoint_present": ledger.load_checkpoint() is not None,
-            }
 
     return app

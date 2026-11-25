@@ -174,6 +174,10 @@ class PcapIndex:
                 raise ValueError("Corrupt retained PCAP index; automatic repair is disabled.") from error
             self._quarantine_corrupt_index(error)
             return
+        if not self._auto_write and (
+            not isinstance(raw_entries, list) or any(not isinstance(e, dict) for e in raw_entries)
+        ):
+            raise ValueError("Corrupt retained PCAP index; automatic repair is disabled.")
         for entry in raw_entries:
             meta = PcapChunkMeta(
                 filename=entry["filename"],
