@@ -51,11 +51,13 @@ CapturePipeline = _pipeline.CapturePipeline
 PipelineResult = _pipeline.PipelineResult
 CaptureType = _settings.CaptureType
 Settings = _settings.Settings
+load_import_settings = Settings.for_import_file
 
 __all__ = [
     "CapturePipeline",
     "PipelineResult",
     "CaptureType",
     "Settings",
+    "load_import_settings",
     "adapter_module",
 ]

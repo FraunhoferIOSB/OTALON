@@ -7,12 +7,16 @@ the records themselves, never from the wall clock.
 
 from __future__ import annotations
 
+import importlib.util
+import json
+import os
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterator, List
 
 import pytest
+from pydantic import ValidationError
 
 from pcap_import._adapter import CapturePipeline, CaptureType, PipelineResult, Settings
 from pcap_import.models import ImportPhase, ImportRequest
@@ -168,6 +172,132 @@ class TestImportSettings:
 
         assert settings.influx.measurement_name == offline_settings.influx.measurement_name
         assert settings.influx.database == offline_settings.influx.database
+
+    @pytest.mark.parametrize("source", [None, ""])
+    def test_none_unset_or_empty_source_is_overridden_before_resolution(
+        self, source, offline_settings, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv("CAPTURE_TYPE", "NONE")
+        if source is None:
+            monkeypatch.delenv("CAPTURE_SOURCE", raising=False)
+        else:
+            monkeypatch.setenv("CAPTURE_SOURCE", source)
+        monkeypatch.delenv("PCAP_BUFFER_DIR", raising=False)
+        monkeypatch.delenv("PCAP_ARCHIVE_DIR", raising=False)
+        payload = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        payload["unknown_ignored"] = "$UNUSED_A1_EXTRA"
+        monkeypatch.delenv("UNUSED_A1_EXTRA", raising=False)
+        before = dict(os.environ)
+        config = tmp_path / "adapter.json"
+        config.write_text(json.dumps(payload), encoding="utf-8")
+        settings = _load_import_settings(str(config), "/import/abc.pcap")
+        assert settings.capture.type is CaptureType.PCAP
+        assert settings.capture.source == "/import/abc.pcap"
+        assert settings.influx == offline_settings.influx
+        assert settings.write_options == offline_settings.write_options
+        assert settings.log == offline_settings.log
+        assert settings.preprocess == offline_settings.preprocess
+        assert settings.mac_influx == offline_settings.mac_influx
+        assert settings.proto_influx == offline_settings.proto_influx
+        assert dict(os.environ) == before
+
+    @pytest.mark.parametrize("field", ["influx", "write_options", "log", "preprocess", "mac_aggregation"])
+    def test_import_still_validates_genuine_worker_settings(self, field, offline_settings, monkeypatch, tmp_path):
+        monkeypatch.setenv("CAPTURE_TYPE", "NONE")
+        monkeypatch.delenv("CAPTURE_SOURCE", raising=False)
+        payload = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        payload[field] = "not a configuration object"
+        config = tmp_path / "invalid.json"
+        config.write_text(json.dumps(payload), encoding="utf-8")
+        with pytest.raises(ValidationError, match=field):
+            _load_import_settings(str(config), "/import/abc.pcap")
+
+    @pytest.mark.parametrize("missing", ["INFLUX_URL", "INFLUX_TOKEN", "NETCAP_LOG_FILE"])
+    def test_import_keeps_required_environment_strict(self, missing, offline_settings, monkeypatch):
+        monkeypatch.setenv("CAPTURE_TYPE", "NONE")
+        monkeypatch.delenv("CAPTURE_SOURCE", raising=False)
+        monkeypatch.delenv(missing)
+        with pytest.raises(RuntimeError, match=missing):
+            _load_import_settings(str(CONFIG_PATH), "/import/abc.pcap")
+
+    def test_runner_uses_exported_import_loader_after_containment(self, offline_settings, monkeypatch, tmp_path):
+        from pcap_import import _adapter
+        from pcap_import import runner as runner_module
+
+        assert runner_module.CaptureType is _adapter.CaptureType
+        capture = tmp_path / "owned.pcap"
+        capture.write_bytes(b"\xd4\xc3\xb2\xa1")
+        calls = []
+
+        def load(config, file_path):
+            calls.append((config, file_path))
+            return offline_settings
+
+        monkeypatch.setattr(runner_module, "load_import_settings", load)
+        runner = PipelineImportRunner(str(CONFIG_PATH), import_dir=str(tmp_path))
+        monkeypatch.setattr(runner, "_build_pipeline", lambda *args: object())
+        monkeypatch.setattr(runner, "_drive", lambda *args: PipelineResult())
+        runner.run(ImportRequest(display_id="a1", file_path=str(capture)), lambda *args: None, threading.Event())
+        assert calls == [(Path(CONFIG_PATH), str(capture.resolve()))]
+        assert _adapter.load_import_settings.__self__ is _adapter.Settings
+
+    @pytest.mark.parametrize("root", ["otalon_capture", "otalon-capture.src.otalon_capture"])
+    def test_import_loader_is_exported_in_both_adapter_layouts(self, root, offline_settings, monkeypatch):
+        from pcap_import import _adapter
+
+        actual_import = _adapter.import_module
+
+        def selected_import(name):
+            if name.startswith(root + "."):
+                return actual_import("otalon_capture." + name.rsplit(".", 1)[-1])
+            raise ModuleNotFoundError(name)
+
+        monkeypatch.setattr(_adapter, "import_module", selected_import)
+        spec = importlib.util.spec_from_file_location("a1_adapter_layout", _adapter.__file__)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        monkeypatch.setenv("CAPTURE_TYPE", "NONE")
+        monkeypatch.delenv("CAPTURE_SOURCE", raising=False)
+        settings = module.load_import_settings(CONFIG_PATH, "/import/layout.pcap")
+        assert settings.capture.type is module.CaptureType.PCAP
+        assert settings.capture.source == "/import/layout.pcap"
+
+    @pytest.mark.parametrize("source", [None, ""])
+    def test_none_runner_drives_internal_pcap_and_preserves_fractional_record_times(
+        self, source, offline_settings, monkeypatch, tmp_path
+    ):
+        monkeypatch.setenv("CAPTURE_TYPE", "NONE")
+        if source is None:
+            monkeypatch.delenv("CAPTURE_SOURCE", raising=False)
+        else:
+            monkeypatch.setenv("CAPTURE_SOURCE", source)
+        capture = tmp_path / "owned.pcap"
+        capture.write_bytes(b"\xd4\xc3\xb2\xa1")
+        config = tmp_path / "adapter.json"
+        payload = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        payload["mac_aggregation"]["enabled"] = False
+        payload["proto_aggregation"]["enabled"] = False
+        config.write_text(json.dumps(payload), encoding="utf-8")
+        writer = StubWriter()
+        seen = []
+
+        def file_reader(settings):
+            assert settings.type is CaptureType.PCAP
+            assert settings.source == str(capture.resolve())
+            seen.append(settings)
+            return FakeCapture([fake_record(HISTORIC_MS + 375), fake_record(HISTORIC_MS + 1375)])
+
+        monkeypatch.setattr(_PIPELINE_MODULE + ".Netcap", file_reader)
+        monkeypatch.setattr(_PIPELINE_MODULE + ".create_writer", lambda *args: writer)
+        result = PipelineImportRunner(str(config), import_dir=str(tmp_path)).run(
+            ImportRequest(display_id="a1", file_path=str(capture)), lambda *args: None, threading.Event()
+        )
+        assert len(seen) == 1
+        assert result["records_processed"] == 2
+        assert result["time_start"] == "2020-09-13T12:26:40.375000+00:00"
+        assert result["time_end"] == "2020-09-13T12:26:41.375000+00:00"
+        assert [value.get_time() for value in writer.written] == [HISTORIC_MS + 375, HISTORIC_MS + 1375]
+        assert writer.closed is True
 
 
 class TestMissingFile:

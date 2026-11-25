@@ -16,7 +16,9 @@ from typing import Any, Callable, Dict, Optional, Protocol
 
 from loguru import logger
 
-from ._adapter import CapturePipeline, CaptureType, PipelineResult, Settings
+from ._adapter import CapturePipeline
+from ._adapter import CaptureType as CaptureType
+from ._adapter import PipelineResult, Settings, load_import_settings
 from .models import ImportPhase, ImportRequest
 from .settings import DEFAULT_IMPORT_DIR
 
@@ -108,9 +110,7 @@ def _load_import_settings(adapter_config_file: str, file_path: str) -> Settings:
         Settings whose capture source is the capture file in ``PCAP`` mode.
     """
 
-    settings = Settings.from_json(Path(adapter_config_file))
-    capture = settings.capture.model_copy(update={"source": file_path, "type": CaptureType.PCAP})
-    return settings.model_copy(update={"capture": capture})
+    return load_import_settings(Path(adapter_config_file), file_path)
 
 
 class PipelineImportRunner:

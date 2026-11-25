@@ -6,10 +6,12 @@ Placeholder resolution is shared across this subproject's three packages via
 
 from __future__ import annotations
 
+import json
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Self, Union
 
+from otalon_common.config import MissingEnvVarPolicy, resolve_env_placeholders
 from pydantic import BaseModel, ConfigDict, HttpUrl, SecretStr
 
 from capture_settings_base import CaptureBaseSettings
@@ -100,3 +102,20 @@ class Settings(CaptureBaseSettings):
     mac_influx: Optional[InfluxConfig] = None
     proto_influx: Optional[InfluxConfig] = None
     protocol_map: Dict[int, str] = {}
+
+    @classmethod
+    def for_import_file(cls, path: JsonPath, file_path: JsonPath) -> Self:
+        """Override the contained input/internal PCAP mode before strict resolution.
+
+        The runner owns path containment. Only declared adapter fields are
+        resolved, preserving extra-ignore without requiring recorder variables.
+        """
+        raw_data = json.loads(Path(path).read_text(encoding="utf-8"))
+        raw_data = {name: value for name, value in raw_data.items() if name in cls.model_fields}
+        capture = raw_data.get("capture", {})
+        if isinstance(capture, dict):
+            raw_data["capture"] = {**capture, "source": str(file_path), "type": CaptureType.PCAP.value}
+        resolved_data = resolve_env_placeholders(
+            raw_data, policy=MissingEnvVarPolicy.RAISE, json_arrays=True, expand_nested=True
+        )
+        return cls.model_validate(resolved_data)
