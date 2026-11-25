@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime
+from math import isfinite
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 SourceState = Literal["current", "stale", "no-data"]
 Priority = Literal["High", "Medium", "Low"]
@@ -214,12 +215,10 @@ class AuditListResponse(BaseModel):
 class CaptureStatus(BaseModel):
     """Read-only capture status for the Data Sources page.
 
-    Proxied verbatim from the pcap_recorder ``GET /status`` endpoint. Every
-    field is nullable so the endpoint never fabricates a value the recorder
-    could not source. ``recording`` reflects the recorder's live capture
-    subprocess state, ``interface`` its configured capture interface, and
-    ``link_up`` the host carrier state observed by the recorder. All fields
-    fall back to ``None`` when the recorder is unreachable or times out.
+    Facts are projected from recorder ``GET /status`` without acquisition
+    inference. Native recording reflects local subprocess truth; WSL recording
+    reflects fresh remote observation and remains unknown in NONE. Unknown
+    upstream facts are null, with degraded source state.
     """
 
     interface: str | None = Field(
@@ -242,6 +241,42 @@ class CaptureStatus(BaseModel):
         default=None,
         description="Capture buffer overflow events in the last 24 h, if known.",
     )
+
+    capture_type: Literal["NONE", "LIVE"] | None = None
+    backend: Literal["native", "wsl"] | None = None
+    source_state: Literal["disabled", "waiting", "recording", "degraded", "blocked"] = "degraded"
+    reason_code: (
+        Literal[
+            "none_selected",
+            "source_absent",
+            "collector_stale",
+            "retry_exhausted",
+            "privilege_denied",
+            "dependency_unavailable",
+            "custody_invalid",
+            "checkpoint_incompatible",
+            "upstream_unavailable",
+        ]
+        | None
+    ) = None
+    retry_attempt: int | None = Field(default=None, strict=True, ge=0, le=5)
+    retry_limit: int | None = Field(default=None, strict=True, ge=5, le=5)
+    retry_in_seconds: float | None = Field(default=None, strict=True, ge=0, le=16, allow_inf_nan=False)
+    retry_exhausted: bool | None = Field(default=None, strict=True)
+    observation_age_seconds: float | None = Field(default=None, strict=True, ge=0, allow_inf_nan=False)
+
+    @field_validator("retry_in_seconds", "observation_age_seconds", mode="before")
+    @classmethod
+    def validate_wire_number(cls, value: Any) -> Any:
+        """Reject unrepresentable integers before the numeric serializer."""
+        if value is not None:
+            try:
+                valid = type(value) in (int, float) and isfinite(value)
+            except OverflowError:
+                valid = False
+            if not valid:
+                raise ValueError("Capture status number must be finite and numeric")
+        return value
 
 
 class DetectionReadinessItem(BaseModel):

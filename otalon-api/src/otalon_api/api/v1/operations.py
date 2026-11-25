@@ -867,6 +867,15 @@ async def capture_status(
         recording=status.recording,
         drops_24h_pct=status.drops_24h_pct,
         overflows=status.overflows,
+        capture_type=status.capture_type,
+        backend=status.backend,
+        source_state=status.source_state,
+        reason_code=status.reason_code,
+        retry_attempt=status.retry_attempt,
+        retry_limit=status.retry_limit,
+        retry_in_seconds=status.retry_in_seconds,
+        retry_exhausted=status.retry_exhausted,
+        observation_age_seconds=status.observation_age_seconds,
     )
 
 
