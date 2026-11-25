@@ -107,8 +107,12 @@ class OperationsJobsService:
         actor: str | None = None,
         since: datetime | None = None,
         limit: int = 1000,
+        *,
+        kind: str | None = None,
     ) -> list[OperationsJob]:
-        return await asyncio.to_thread(self._jobs.list_jobs, state, type_, actor, since, limit)
+        if kind is None:
+            return await asyncio.to_thread(self._jobs.list_jobs, state, type_, actor, since, limit)
+        return await asyncio.to_thread(self._jobs.list_jobs, state, type_, actor, since, limit, kind=kind)
 
     async def list_summaries(
         self,

@@ -124,18 +124,22 @@ async def import_pcap(
     time_range = await asyncio.to_thread(read_capture_time_range, upload.path)
     await _guard_overlap(service, upload, time_range, upload.force)
     job = await service.create_job(upload, time_range, force=upload.force)
-    delivered = await service.deliver(job)
+    if (job.params or {}).get("filename") != upload.filename:
+        await asyncio.to_thread(upload.path.unlink, True)
+    delivered = await service.deliver(job) if job.state == "queued" else False
+    job = await service.get_job(job.display_id) or job
+    params = job.params or {}
     return PcapImportAccepted(
         display_id=job.display_id,
         job_id=job.id,
-        state="running" if delivered else "queued",
-        filename=upload.filename,
-        original_filename=upload.original_filename,
-        size_bytes=upload.size_bytes,
-        sha256=upload.sha256,
-        time_start=time_range.time_start if time_range else None,
-        time_end=time_range.time_end if time_range else None,
-        forced=upload.force,
+        state=job.state,
+        filename=params["filename"],
+        original_filename=params.get("original_filename"),
+        size_bytes=params["size_bytes"],
+        sha256=params["sha256"],
+        time_start=params.get("time_start"),
+        time_end=params.get("time_end"),
+        forced=bool(params.get("force")),
         delivered=delivered,
     )
 
@@ -196,7 +200,7 @@ async def list_pcap_imports(
     neither the ``kind`` filter nor the filename, size and capture window
     an operator needs are reachable there.
     """
-    jobs = sorted(await service.list_jobs(state=state), key=_started_at_key, reverse=True)
+    jobs = sorted(await service.list_jobs(state=state, limit=limit), key=_started_at_key, reverse=True)
     items = [_status_of(job) for job in jobs[:limit]]
     return PcapImportList(items=items, total=len(items))
 

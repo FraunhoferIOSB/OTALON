@@ -64,6 +64,8 @@ class OperationsJobsRepository:
         actor: str | None = None,
         since: datetime | None = None,
         limit: int = 1000,
+        *,
+        kind: str | None = None,
     ) -> list[OperationsJob]:
         """Return jobs most-recent first, with optional filters."""
         clauses: list[str] = []
@@ -80,6 +82,9 @@ class OperationsJobsRepository:
         if since:
             clauses.append("started_at >= %(since)s")
             params["since"] = since.isoformat()
+        if kind is not None:
+            clauses.append("params->>'kind' = %(kind)s")
+            params["kind"] = kind
         where = " AND ".join(clauses)
         sql = f"""
             SELECT * FROM operations_jobs

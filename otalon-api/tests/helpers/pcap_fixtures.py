@@ -114,7 +114,11 @@ class FakeJobsService:
         can_retry: bool = False,
         idempotency_key: str | None = None,
     ) -> OperationsJob:
-        """Create a queued job row."""
+        """Create a queued row or return the original SHA-idempotency row."""
+        if idempotency_key is not None:
+            existing = next((job for job in self.jobs.values() if job.idempotency_key == idempotency_key), None)
+            if existing is not None:
+                return existing
         return self.seed(
             type=type_,
             title=title,
@@ -156,13 +160,27 @@ class FakeJobsService:
         """Return one job by public display id."""
         return next((j for j in self.jobs.values() if j.display_id == display_id), None)
 
-    async def list_jobs(self, state: str | None = None, type_: str | None = None, **_: Any) -> list[OperationsJob]:
-        """Return jobs matching the optional state/type filters."""
-        return [
+    async def list_jobs(
+        self,
+        state: str | None = None,
+        type_: str | None = None,
+        actor: str | None = None,
+        since: datetime | None = None,
+        limit: int = 1000,
+        *,
+        kind: str | None = None,
+    ) -> list[OperationsJob]:
+        """Filter before applying the repository's newest-first page bound."""
+        jobs = [
             job
             for job in self.jobs.values()
-            if (state is None or job.state == state) and (type_ is None or job.type == type_)
+            if (not state or job.state == state)
+            and (not type_ or job.type == type_)
+            and (not actor or job.actor == actor)
+            and (since is None or job.started_at >= since)
+            and (kind is None or job.params.get("kind") == kind)
         ]
+        return sorted(jobs, key=lambda job: job.started_at, reverse=True)[:limit]
 
     async def complete_job(self, job_id: int, result: str | None = None, **_: Any) -> OperationsJob | None:
         """Drive a running job to terminal ``completed``."""

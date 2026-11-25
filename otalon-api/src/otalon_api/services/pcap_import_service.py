@@ -178,6 +178,10 @@ class PcapImportService:
         Returns:
             ``True`` when the worker accepted the job.
         """
+        current = await self._jobs.get_job(job.id)
+        if current is None or not is_import_job(current) or current.state != "queued":
+            return False
+        job = current
         params = job.params or {}
         file_path = self.file_path_of(job)
         if file_path is None:
@@ -383,10 +387,9 @@ class PcapImportService:
         candidate = self._config.import_dir / Path(filename).name
         return candidate if candidate.is_file() else None
 
-    async def list_jobs(self, state: str | None = None) -> list[OperationsJob]:
+    async def list_jobs(self, state: str | None = None, limit: int = 1000) -> list[OperationsJob]:
         """Return import jobs, newest first, optionally filtered by state."""
-        jobs = await self._jobs.list_jobs(state=state, type_=JOB_TYPE)
-        return [job for job in jobs if is_import_job(job)]
+        return await self._jobs.list_jobs(state=state, type_=JOB_TYPE, limit=limit, kind=JOB_KIND)
 
     async def get_job(self, display_id: str) -> OperationsJob | None:
         """Return one import job by display id, or ``None``."""
