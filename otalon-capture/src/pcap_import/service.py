@@ -49,6 +49,16 @@ class NoActiveImportError(RuntimeError):
     """Raised when cancellation is requested while the worker is idle."""
 
 
+class ImportCancelIdentityError(RuntimeError):
+    """Raised when cancellation does not identify the current import."""
+
+    def __init__(self, message: str, display_id: Optional[str]) -> None:
+        """Retain the locked slot identity for the conflict response."""
+
+        self.display_id = display_id
+        super().__init__(message)
+
+
 def _now() -> datetime:
     """Return the current UTC time; used for job bookkeeping only.
 
@@ -150,20 +160,36 @@ class ImportService:
         )
         return accepted_at
 
-    def cancel(self) -> str:
-        """Request cancellation of the running import.
+    def cancel(self, expected_display_id: Optional[str] = None) -> str:
+        """Request cancellation of only the identified running import.
+
+        Args:
+            expected_display_id: Owning job identity. Omission is allowed only
+                to preserve the existing idle refusal, never for active work.
 
         Returns:
             The display identifier of the job being cancelled.
 
         Raises:
             NoActiveImportError: When no import is currently running.
+            ImportCancelIdentityError: When the expected identity is missing
+                or does not match the occupied slot.
         """
 
         with self._lock:
             if self._status.state not in {ImportState.RUNNING, ImportState.CANCELLING}:
                 raise NoActiveImportError("No import is currently running.")
+            if not expected_display_id:
+                raise ImportCancelIdentityError(
+                    "Expected display_id is required for cancellation.", self._status.display_id
+                )
+            if expected_display_id != self._status.display_id:
+                raise ImportCancelIdentityError(
+                    "Expected display_id does not match the current import.", self._status.display_id
+                )
             display_id = self._status.display_id or ""
+            if self._status.state is ImportState.CANCELLING:
+                return display_id
             self._status = self._status.model_copy(
                 update={
                     "state": ImportState.CANCELLING,

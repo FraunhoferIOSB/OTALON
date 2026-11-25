@@ -154,7 +154,7 @@ class TestCancellation:
         client.post("/import", json=make_job("job-1"))
         assert blocking_runner.started.wait(timeout=IDLE_TIMEOUT_S)
 
-        cancelled = client.post("/import/cancel")
+        cancelled = client.post("/import/cancel", json={"display_id": "job-1"})
         assert cancelled.status_code == 202
         assert cancelled.json()["display_id"] == "job-1"
 
@@ -180,7 +180,7 @@ class TestCancellation:
         client, service = make_client(blocking_runner, reporter)
         client.post("/import", json=make_job("job-1"))
         assert blocking_runner.started.wait(timeout=IDLE_TIMEOUT_S)
-        client.post("/import/cancel")
+        client.post("/import/cancel", json={"display_id": "job-1"})
         _wait_idle(service)
 
         assert reporter.states()[-1] == ImportState.CANCELLED.value

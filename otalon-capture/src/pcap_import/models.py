@@ -127,6 +127,12 @@ class ImportRequest(BaseModel):
         return value
 
 
+class ImportCancelRequest(BaseModel):
+    """Expected owning job identity for cooperative cancellation."""
+
+    display_id: str = Field(min_length=1, max_length=128)
+
+
 class ImportAccepted(BaseModel):
     """Acknowledgement returned when a job is taken for processing."""
 

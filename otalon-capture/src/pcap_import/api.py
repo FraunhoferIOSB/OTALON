@@ -18,8 +18,8 @@ from starlette.status import HTTP_409_CONFLICT
 
 from capture_settings_base import OperatorAuthSettings
 
-from .models import HealthResponse, ImportAccepted, ImportRequest, ImportStatus
-from .service import ImportService, NoActiveImportError, WorkerBusyError
+from .models import HealthResponse, ImportAccepted, ImportCancelRequest, ImportRequest, ImportStatus
+from .service import ImportCancelIdentityError, ImportService, NoActiveImportError, WorkerBusyError
 
 
 def create_app(service: ImportService) -> FastAPI:
@@ -115,31 +115,40 @@ def create_app(service: ImportService) -> FastAPI:
 
     @app.post("/import/cancel", status_code=202)
     async def cancel_import(
+        request: ImportCancelRequest | None = None,
         svc: ImportService = Depends(get_service),
         _auth: None = Depends(require_operator_api_key),
     ) -> JSONResponse:
-        """Request cancellation of the running import.
+        """Request cancellation of the identified running import.
 
-        Cancelling aborts a running job and frees the worker slot, so it is
-        a mutation of worker state and carries the same operator credential
-        as ``POST /import``. It was the one route CAP-02 left open, so any
-        party able to reach the worker could abort an import (audit
-        PCAP-005).
+        Cancellation is cooperative: the slot stays occupied until the runner
+        actually settles. This mutation carries the same operator credential
+        as ``POST /import`` (audit PCAP-005). An absent body preserves only
+        the existing idle refusal; active work requires its expected identity.
 
         Returns:
             A ``202`` acknowledgement naming the job being cancelled.
 
         Raises:
-            HTTPException: ``409`` when no import is currently running.
+            HTTPException: ``409`` when idle or the expected identity is
+                absent or mismatched.
         """
 
         try:
-            display_id = svc.cancel()
+            display_id = svc.cancel(request.display_id if request is not None else None)
         except NoActiveImportError as inactive:
             raise HTTPException(
                 status_code=HTTP_409_CONFLICT,
                 detail={"message": "No import is currently running."},
             ) from inactive
+        except ImportCancelIdentityError as identity:
+            raise HTTPException(
+                status_code=HTTP_409_CONFLICT,
+                detail={
+                    "message": str(identity),
+                    "running_display_id": identity.display_id,
+                },
+            ) from identity
         return JSONResponse(status_code=202, content={"display_id": display_id, "state": "cancelling"})
 
     return app
