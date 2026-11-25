@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from threading import Event
+from threading import Event, Lock
 from typing import Generator
 
 import network_capture as nc
@@ -16,6 +16,8 @@ class Netcap:
 
     def __init__(self, config: CaptureConfig) -> None:
         self.stop_event = Event()
+        self._stop_lock = Lock()
+        self._capture_type = config.type
         self.nc = self._create_capture(config)
 
     def capture_loop(self) -> Generator[object, None, None]:
@@ -29,10 +31,14 @@ class Netcap:
                     continue
                 yield value
         except RuntimeError:
-            logger.warning(
-                "Capture loop terminated due to RuntimeError (possibly empty queue)."
-            )
+            if self._capture_type is CaptureType.LIVE and not self.stop_event.is_set():
+                logger.warning("Native LIVE acquisition failed; propagating loss.")
+                raise
+            logger.warning("Capture loop terminated due to RuntimeError (possibly empty queue).")
         except Exception as error:  # noqa: BLE001 - forwarding unexpected exceptions
+            if self._capture_type is CaptureType.LIVE and not self.stop_event.is_set():
+                logger.warning("Native LIVE acquisition failed; propagating error.")
+                raise
             logger.exception("Unexpected error in capture loop: {error}", error=error)
         finally:
             logger.info("Exiting capture loop.")
@@ -40,8 +46,12 @@ class Netcap:
     def stop(self) -> None:
         """Signal the capture loop to stop."""
 
-        logger.info("Stop event received. Stopping capture...")
-        self.stop_event.set()
+        with self._stop_lock:
+            if self.stop_event.is_set():
+                return
+            logger.info("Stop event received. Stopping capture...")
+            self.stop_event.set()
+            self.nc.stop()
 
     @staticmethod
     def _create_capture(config: CaptureConfig) -> nc.NetworkCapture:

@@ -66,6 +66,8 @@ def wait_for_influx_health(
             request_timeout = min(timeout_s, remaining) if stop_event is not None else timeout_s
             with request.urlopen(req, timeout=request_timeout) as response:
                 status = getattr(response, "status", 200)
+                if stop_event is not None and status in (401, 403):
+                    raise error.HTTPError(health_url, status, "Health authorization refused", {}, None)
                 if 200 <= status < 300:
                     logger.info("InfluxDB health OK (HTTP {status}). Proceeding.", status=status)
                     return True
@@ -78,6 +80,8 @@ def wait_for_influx_health(
                     backoff=backoff_s,
                 )
         except error.HTTPError as http_error:
+            if stop_event is not None and http_error.code in (401, 403):
+                raise
             if http_error.code == 401:
                 logger.info("InfluxDB health endpoint responded 401 Unauthorized; treating as UP and proceeding.")
                 return True
@@ -93,6 +97,8 @@ def wait_for_influx_health(
                 backoff=backoff_s,
             )
         except Exception as unexpected_error:  # noqa: BLE001 - defensive logging
+            if stop_event is not None:
+                raise
             logger.warning(
                 "Unexpected error during InfluxDB healthcheck: {error}. Retrying in {backoff}s...",
                 error=unexpected_error,

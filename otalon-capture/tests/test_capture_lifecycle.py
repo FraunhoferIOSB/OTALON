@@ -317,7 +317,9 @@ async def test_absent_source_is_waiting_without_either_exec(monkeypatch, tmp_pat
     monkeypatch.setattr(module, "_interface_exists", lambda interface: False)
     assert await owner.start() is False
     assert owner.snapshot.source_state is SourceState.WAITING
-    assert owner.snapshot.reason_code == "source_absent"
+    assert owner.snapshot.reason_code == "retry_exhausted"
+    assert owner.snapshot.retry_attempt == 5
+    assert owner.snapshot.retry_exhausted is True
     assert calls == []
     assert recorder.starts == 0
     await owner.stop()
@@ -394,7 +396,9 @@ async def test_lost_child_or_stale_readiness_reaps_sibling(monkeypatch, tmp_path
     else:
         clock.now += 6
     await owner.run()
-    assert owner.snapshot.source_state is SourceState.DEGRADED
+    assert owner.snapshot.source_state is SourceState.BLOCKED
+    assert await owner.start() is False
+    assert len(calls) == 1
     assert child.reaped == 1
     assert recorder.stops == 1
     assert owner.adapter is None

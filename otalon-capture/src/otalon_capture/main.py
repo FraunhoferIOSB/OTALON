@@ -116,17 +116,14 @@ def main() -> None:
     terminal = SourceState.DEGRADED
     reason = "dependency_unavailable"
     try:
-        try:
-            wait_for_influx_health(
-                str(settings.influx.host),
-                settings.influx.token.get_secret_value(),
-                timeout_s=2.0,
-                max_wait_s=2.0,
-                backoff_s=0.25,
-                stop_event=runtime_state.stop_event,
-            )
-        except Exception:
-            logger.warning("Advisory health probe failed; pipeline readiness remains unverified.")
+        wait_for_influx_health(
+            str(settings.influx.host),
+            settings.influx.token.get_secret_value(),
+            timeout_s=2.0,
+            max_wait_s=2.0,
+            backoff_s=0.25,
+            stop_event=runtime_state.stop_event,
+        )
         if not runtime_state.running:
             return
         runtime_state.pipeline = _construct_pipeline(settings)
@@ -148,8 +145,10 @@ def main() -> None:
             heartbeat.start()
         logger.info("Adapter started; acquisition readiness is not metric publication proof.")
         runtime_state.pipeline.run()
-    except Exception:
+    except Exception as error:
         terminal = SourceState.BLOCKED
+        if isinstance(error, PermissionError):
+            reason = "privilege_denied"
         logger.warning("Adapter startup/run failed; acquisition blocked.")
         raise
     finally:

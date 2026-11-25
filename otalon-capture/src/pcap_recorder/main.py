@@ -207,17 +207,28 @@ async def _run_service(settings: PcapRecorderSettings, intent: CaptureIntent, st
 
     async def acquire() -> None:
         try:
-            if await state.acquisition.start():
+            while state.running and await state.acquisition.start():
                 state.recorder = state.acquisition.recorder
                 monitor = CaptureLossMonitor(settings.pcap.interface)
                 state.ringbuffer_task = asyncio.create_task(_ringbuffer_loop(state, ringbuffer))
                 state.capture_stats_task = asyncio.create_task(_capture_stats_loop(state, monitor))
-                await state.acquisition.run()
+                try:
+                    await state.acquisition.run()
+                finally:
+                    state.recorder = None
+                    tasks = [task for task in (state.ringbuffer_task, state.capture_stats_task) if task is not None]
+                    for task in tasks:
+                        task.cancel()
+                    await asyncio.gather(*tasks, return_exceptions=True)
         finally:
             state.recorder = None
             for task in (state.ringbuffer_task, state.capture_stats_task):
                 if task is not None:
                     task.cancel()
+            await asyncio.gather(
+                *[task for task in (state.ringbuffer_task, state.capture_stats_task) if task is not None],
+                return_exceptions=True,
+            )
             await state.acquisition.stop()
 
     try:
