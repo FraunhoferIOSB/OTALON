@@ -62,6 +62,13 @@ UI `typecheck` enforces a 149-error ratchet; the raw checker is not clean.
 - Contributor contract: [AGENTS.md](AGENTS.md)
 - MCP usage and endpoint references: [otalon-mcp/docs/](otalon-mcp/docs/)
 
+## Workshop Candidate
+
+The `workshop-wsl-extension` tag identifies the workshop candidate for operator-led
+final acceptance. See [WORKSHOP-WSL.md](WORKSHOP-WSL.md) for checkout instructions,
+verified scope and known limitations. This tag is not a stable release or a claim
+that the remaining GUI, large-upload, physical Windows or shutdown gates passed.
+
 ## Capture And Manual Import
 
 In **Operations / Data Sources**, picker and drop selections append all files
