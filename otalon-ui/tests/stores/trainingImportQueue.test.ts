@@ -585,4 +585,183 @@ describe('training import queue', () => {
     expect(names()).toEqual(['A'])
     expect(calls.some((c) => c.url.endsWith('/cancel'))).toBe(false)
   })
+
+  it.each(['cancelled', 'completed', 'failed'] as const)(
+    'Q-01 explicit refresh reads exact blocked A once and releases B only after reconciled %s detail',
+    async (state) => {
+      const a = file('A')
+      const b = file('B')
+      store.enqueueImports([a, b])
+      await flush()
+      jobs.set('A', status('A', 'cancelling', { error: MARKER, latest_event: MARKER }))
+      await advance()
+      const count = reads('A').length
+      const terminal = status('A', state, { result: state === 'completed' ? { points_written: 4 } : null })
+      jobs.set('A', terminal)
+      await store.fetchRecentImports()
+      await advance(60000)
+      await store.refreshImportStatus()
+      expect(store.recentImports).toContainEqual(terminal)
+      expect(store.importQueue[0]?.status?.error).toBe(MARKER)
+      expect(reads('A')).toHaveLength(count)
+      expect(names()).toEqual(['A'])
+      expect(vi.getTimerCount()).toBe(0)
+
+      const start = calls.length
+      const reconciled = deferred<{ items: PcapImportStatus[]; total: number }>()
+      const previousListing = listing
+      let cancellingLists = 0
+      listing = (activeState) => {
+        if (activeState === 'cancelling' && ++cancellingLists === 2) return reconciled.promise
+        return previousListing(activeState)
+      }
+      const refresh = Promise.all([store.refreshImportQueue(), store.refreshImportQueue()])
+      await flush()
+      expect(reads('A')).toHaveLength(count + 1)
+      expect(store.importQueue[0]?.status).toEqual(terminal)
+      expect(names()).toEqual(['A'])
+      expect(store.importQueue[1]?.uploadState).toBe('pending')
+      reconciled.resolve({ items: [], total: 0 })
+      await refresh
+      await flush()
+      expect(names()).toEqual(['A', 'B'])
+      expect(reads('A')).toHaveLength(count + 1)
+      expect(store.importQueue[0]?.file).toBe(a)
+      expect(store.importQueue[1]?.file).toBe(b)
+      const beforeB = calls.slice(
+        start,
+        calls.findLastIndex((c) => c.url === BASE && c.options.method === 'POST'),
+      )
+      expect(beforeB.filter((c) => c.options.query?.state).map((c) => c.options.query)).toEqual([
+        { limit: 200, state: 'queued' },
+        { limit: 200, state: 'running' },
+        { limit: 200, state: 'cancelling' },
+        { limit: 200, state: 'queued' },
+        { limit: 200, state: 'running' },
+        { limit: 200, state: 'cancelling' },
+      ])
+      expect(calls.some((c) => c.url.endsWith('/cancel'))).toBe(false)
+    },
+  )
+
+  it.each(['queued', 'running', 'cancelling', 'mismatched', '404', 'network'] as const)(
+    'Q-01 explicit refresh retains blocked A on %s detail without automatic retry or reupload',
+    async (outcome) => {
+      store.enqueueImports([file('A'), file('B')])
+      await flush()
+      jobs.set('A', status('A', 'cancelling', { error: MARKER }))
+      await advance()
+      const truth = store.importQueue[0]!.status
+      const count = reads('A').length
+      jobs.set('similar', status('similar', 'completed', { original_filename: 'A', size_bytes: 3 }))
+      listing = () => ({ items: [], total: 0 })
+      detail = async () => {
+        if (outcome === '404') throw { status: 404 }
+        if (outcome === 'network') throw new Error('detail network outage')
+        if (outcome === 'mismatched') return jobs.get('similar')!
+        return status('A', outcome)
+      }
+      await store.fetchRecentImports()
+      await store.refreshImportQueue()
+      expect(reads('A')).toHaveLength(count + 1)
+      expect(store.importQueue[0]?.status).toEqual(truth)
+      expect(store.importQueue[1]?.uploadState).toBe('pending')
+      expect(vi.getTimerCount()).toBe(0)
+      const settled = calls.length
+      await advance(60000)
+      await store.startImportQueue()
+      await store.refreshImportStatus()
+      expect(calls).toHaveLength(settled)
+      expect(names()).toEqual(['A'])
+      expect(calls.some((c) => c.url.endsWith('/cancel'))).toBe(false)
+    },
+  )
+
+  it.each([401, 403])('Q-01 blocked detail auth %i stops the queue without resending', async (code) => {
+    store.enqueueImports([file('A'), file('B')])
+    await flush()
+    jobs.set('A', status('A', 'cancelling', { latest_event: MARKER }))
+    await advance()
+    jobs.delete('A')
+    const count = reads('A').length
+    detail = async () => {
+      throw { response: { status: code }, data: { detail: 'denied' } }
+    }
+    await store.refreshImportQueue()
+    expect(reads('A')).toHaveLength(count + 1)
+    expect(store.importAuthStopped).toBe(true)
+    expect(store.importQueue[0]?.status?.latest_event).toBe(MARKER)
+    expect(vi.getTimerCount()).toBe(0)
+    const settled = calls.length
+    await advance(60000)
+    await store.refreshImportQueue()
+    await store.startImportQueue()
+    expect(calls).toHaveLength(settled)
+    expect(names()).toEqual(['A'])
+  })
+
+  it.each(['reconciliation', 'detail'] as const)(
+    'Q-01 stopped generation cannot recover blocked A after late %s settlement',
+    async (stage) => {
+      store.enqueueImports([file('A'), file('B')])
+      await flush()
+      jobs.set('A', status('A', 'cancelling', { error: MARKER }))
+      await advance()
+      jobs.set('A', status('A', 'completed'))
+      const count = reads('A').length
+      const heldDetail = deferred<PcapImportStatus>()
+      const heldListing = deferred<{ items: PcapImportStatus[]; total: number }>()
+      if (stage === 'detail') detail = () => heldDetail.promise
+      else listing = () => heldListing.promise
+      const refresh = store.refreshImportQueue()
+      await flush()
+      expect(reads('A')).toHaveLength(count + (stage === 'detail' ? 1 : 0))
+      store.stopImportQueue()
+      const before = JSON.stringify(store.$state)
+      const settled = calls.length
+      heldDetail.resolve(status('A', 'completed'))
+      heldListing.resolve({ items: [], total: 0 })
+      await refresh
+      await advance(60000)
+      expect(JSON.stringify(store.$state)).toBe(before)
+      expect(calls).toHaveLength(settled)
+      expect(names()).toEqual(['A'])
+      expect(vi.getTimerCount()).toBe(0)
+    },
+  )
+
+  it.each(['poll', 'cancel'] as const)(
+    'Q-01 explicit blocked recovery coalesces with the existing exact-ID %s lock',
+    async (lock) => {
+      store.enqueueImports([file('A'), file('B')])
+      await flush()
+      const held = deferred<PcapImportStatus>()
+      let cancellation: Promise<void> | undefined
+      if (lock === 'poll') {
+        detail = (id) => (id === 'A' ? held.promise : Promise.resolve(jobs.get(id)!))
+        await advance()
+        jobs.set('A', status('A', 'cancelling', { error: MARKER }))
+      } else {
+        jobs.set('A', status('A', 'cancelling', { error: MARKER }))
+        await advance()
+        cancel = () => held.promise
+        cancellation = store.cancelQueueImport(store.importQueue[0]!.localId)
+        await flush()
+      }
+      const count = reads('A').length
+      const refresh = store.refreshImportQueue()
+      await flush()
+      expect(store.importQueue[0]?.status?.error).toBe(MARKER)
+      expect(reads('A')).toHaveLength(count)
+      expect(names()).toEqual(['A'])
+      jobs.set('A', status('A', 'cancelled'))
+      held.resolve(jobs.get('A')!)
+      await Promise.all([refresh, cancellation])
+      await flush()
+      expect(reads('A')).toHaveLength(count)
+      expect(store.importQueue[0]?.status?.state).toBe('cancelled')
+      expect(names()).toEqual(['A', 'B'])
+      expect(calls.filter((c) => c.url.endsWith('/cancel'))).toHaveLength(lock === 'cancel' ? 1 : 0)
+    },
+  )
 })

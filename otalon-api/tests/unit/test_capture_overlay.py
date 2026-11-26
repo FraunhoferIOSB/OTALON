@@ -85,6 +85,7 @@ def test_wsl_none_retains_logs_and_custody_without_key_bind() -> None:
     assert capture["volumes"].tag == "!override"
     assert capture["volumes"] == ["continuous-capture-data:/app/continuous", "./shared/logs:/app/logs"]
     assert capture["environment"] == {
+        "NETCAP_ENTRYPOINT_MODULES": "desktop_ingest.main",
         "INFLUX_URL": "http://influxdb3:8181",
         "CONTINUOUS_ROOT": "/app/continuous",
         "CONTINUOUS_SOURCE_KEY_FILE": "/run/secrets/continuous-source-key",

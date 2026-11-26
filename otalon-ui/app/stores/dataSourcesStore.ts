@@ -665,9 +665,23 @@ export const useDataSourcesStore = defineStore('dataSources', {
     async refreshImportQueue(): Promise<void> {
       const runtime = this._importRuntime()
       if (this.importAuthStopped) return
+      const generation = runtime.generation
       runtime.active = true
       runtime.reconciled = false
       await this._reconcileImportQueue()
+      if (generation !== runtime.generation || this.importAuthStopped || !runtime.reconciled) return
+      const blockedIds = [
+        ...new Set(
+          this.importQueue
+            .filter(importBlocked)
+            .map(importIdentity)
+            .filter((id): id is string => !!id),
+        ),
+      ]
+      for (const id of blockedIds) {
+        await this._pollQueueImport(id, true)
+        if (generation !== runtime.generation || this.importAuthStopped) return
+      }
       await this._scheduleImports()
     },
 
@@ -757,13 +771,13 @@ export const useDataSourcesStore = defineStore('dataSources', {
     },
 
     /** Coalesce all readers of an identity, including the temporary page polling wrapper. */
-    async _pollQueueImport(displayId: string): Promise<void> {
+    async _pollQueueImport(displayId: string, recoverBlocked = false): Promise<void> {
       const runtime = this._importRuntime()
       if (runtime.polls.has(displayId)) return await runtime.polls.get(displayId)
       if (runtime.cancels.has(displayId)) return await runtime.cancels.get(displayId)
       if (
         this.importAuthStopped ||
-        this.importQueue.some((row) => importIdentity(row) === displayId && importBlocked(row))
+        (!recoverBlocked && this.importQueue.some((row) => importIdentity(row) === displayId && importBlocked(row)))
       )
         return
       const generation = runtime.generation
@@ -773,6 +787,8 @@ export const useDataSourcesStore = defineStore('dataSources', {
           if (generation !== runtime.generation) return
           if (!validImportStatus(job) || job.display_id !== displayId)
             throw new Error('Import detail identity/state is unverified.')
+          // Explicit blocked recovery needs terminal truth, not permission to resume automatic polling.
+          if (recoverBlocked && !importIsTerminal(job.state)) return
           this._applyImportStatus(job)
           if (importIsTerminal(job.state)) await this.fetchRecentImports()
         } catch (error: unknown) {
