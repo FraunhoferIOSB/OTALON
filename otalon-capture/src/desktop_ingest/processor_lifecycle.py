@@ -169,7 +169,7 @@ class ProcessorOwner:
 
     Thread cancellation cannot stop a native constructor or client call. We join
     its result before cleanup, rather than race close or abandon returned owners.
-    The read-only pipeline must supply any stronger native-call/cleanup bounds.
+    The module supervisor, not a thread timeout, terminates indefinite work.
     """
 
     def __init__(self, settings, ledger, refresh_index):
@@ -317,6 +317,11 @@ class ProcessorOwner:
                     try:
                         began = monotonic()
                         self.pipeline = await self._work(ContinuousPipeline, self.settings, self.ledger)
+                        if self.stop_event.is_set():
+                            break
+                        bind_stop = getattr(self.pipeline, "bind_stop", None)
+                        if callable(bind_stop):
+                            bind_stop(self.stop_event.is_set)
                         if monotonic() - began >= self.policy.readiness_timeout_seconds:
                             self._failure(RuntimeError("readiness deadline"))
                             await self._close()
@@ -348,6 +353,8 @@ class ProcessorOwner:
                         self.reason = "retry_exhausted"
                         logger.warning("Processor exhausted reason=retry_exhausted attempt=5")
                     continue
+                if self.stop_event.is_set():
+                    break
                 self.usable = self.ever_usable = True
                 self.processor_state = "usable"
                 self.error_class = self.reason = None

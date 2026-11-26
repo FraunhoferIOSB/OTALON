@@ -22,9 +22,10 @@ services:
     cap_add: !reset []
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
-    entrypoint: ["python", "-u", "-m"]
-    command: ["desktop_ingest.main"]
+    entrypoint: ["python", "-u", "/app/entrypoint.py"]
+    command: []
     environment:
+      NETCAP_ENTRYPOINT_MODULES: desktop_ingest.main
       INFLUX_URL: http://influxdb3:8181
       CONTINUOUS_ROOT: /app/continuous
       # Single-key bind is LIVE-only in docker-compose.wsl-live.yml; NONE

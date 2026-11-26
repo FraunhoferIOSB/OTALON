@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 from network_capture import NetworkCaptureSession
 
@@ -19,6 +20,14 @@ from .pcap import records
 
 
 class ContinuousPipeline:
+    def bind_stop(self, requested: Callable[[], bool]):
+        """Bind the local owner's observation without changing standalone users."""
+        self._stop_requested = requested
+
+    def _stopping(self):
+        requested = getattr(self, "_stop_requested", None)
+        return requested is not None and requested()
+
     def __init__(self, settings, ledger, write_enabled=True):
         from .settings import ReliablePipelineSettings
 
@@ -159,31 +168,50 @@ class ContinuousPipeline:
         return payload
 
     def process_one(self):
+        if self._stopping():
+            return False
         self.publish_pending()
+        if self._stopping():
+            return False
         chunk = self.ledger.next_chunk()
-        if not chunk:
+        if self._stopping() or not chunk:
             return False
         data = Path(chunk["path"]).read_bytes()
+        if self._stopping():
+            return False
         if hashlib.sha256(data).hexdigest() != chunk["hash"]:
             raise ValueError("custody bytes changed")
         payload = []
         try:
             for frame, sec, ns in records(data):
+                if self._stopping():
+                    return False
                 window = self.native.push_packet(frame, sec, ns)
+                if self._stopping():
+                    return False
                 if window is not None:
                     payload += self.points(window)
-            self.ledger.prepare(chunk["id"], self.checkpoint(), payload)
+            if self._stopping():
+                return False
+            state = self.checkpoint()
+            if self._stopping():
+                return False
+            self.ledger.prepare(chunk["id"], state, payload)
         except Exception:
             # Owner must reload last durable checkpoint before retry; no false completion.
             raise
+        if self._stopping():
+            return False
         self.publish_pending()
-        return True
+        return not self._stopping()
 
     def publish_pending(self):
-        if not self.write_enabled:
+        if self._stopping() or not self.write_enabled:
             return
         max_request_bytes = 8_000_000  # Leave headroom below Influx's default 10 MB HTTP body limit.
         for batch in self.ledger.pending_batches():
+            if self._stopping():
+                return
             grouped = {}
             for part in batch["payload"]:
                 writer = self.writers[part["writer"]]
@@ -204,14 +232,26 @@ class ContinuousPipeline:
                 lines, request_bytes = [], 0
                 for line, size in sized_lines:
                     if lines and request_bytes + 1 + size > max_request_bytes:
+                        if self._stopping():
+                            return
                         writer.client.write(record=lines, write_precision=writer.write_precision)
+                        if self._stopping():
+                            return
                         lines, request_bytes = [], 0
                     request_bytes += size + bool(lines)
                     lines.append(line)
                 if lines:
+                    if self._stopping():
+                        return
                     writer.client.write(record=lines, write_precision=writer.write_precision)
+                    if self._stopping():
+                        return
             for part in batch["payload"]:
+                if self._stopping():
+                    return
                 self.verify_visible(part)
+            if self._stopping():
+                return
             self.ledger.commit_batch(batch["id"])
 
     def verify_visible(self, part):
@@ -231,15 +271,23 @@ class ContinuousPipeline:
             return value.astimezone(timezone.utc)
 
         for expected in part["records"]:
+            if self._stopping():
+                return
             predicates = ["time=" + quoted(expected["time"])] + [
                 identifier(tag) + "=" + quoted(expected[tag]) for tag in part["tag_keys"]
             ]
             query = (
                 "SELECT * FROM " + identifier(part["measurement"]) + " WHERE " + " AND ".join(predicates) + " LIMIT 2"
             )
+            if self._stopping():
+                return
             rows = self.writers[part["writer"]].client.query(query=query, mode="pandas")
+            if self._stopping():
+                return
             if hasattr(rows, "to_dict"):
                 rows = rows.to_dict(orient="records")
+            if self._stopping():
+                return
             if len(rows) != 1:
                 raise ValueError("exact point not yet visible")
             actual = rows[0]
