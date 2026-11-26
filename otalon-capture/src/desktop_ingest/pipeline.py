@@ -7,7 +7,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from network_capture import NetworkCaptureSession
+
 from otalon_capture.aggregation import SparsePortAggregator
+from otalon_capture.client_release import ClientReleaseError, release_client_no_write
 from otalon_capture.influxdb_writer import InfluxDBWriter
 from otalon_capture.mac_aggregation import MacAggregator
 from otalon_capture.proto_aggregation import ProtoAggregator
@@ -20,6 +22,10 @@ class ContinuousPipeline:
     def __init__(self, settings, ledger, write_enabled=True):
         from .settings import ReliablePipelineSettings
 
+        self.native = self.sparse = self.mac = self.proto = None
+        self.writers = {}
+        self._released = False
+        self.release_failures = ()
         if not isinstance(settings, ReliablePipelineSettings):
             data = settings.model_dump()
             data["interval_ms"] = data.pop("capture")["interval"]
@@ -39,45 +45,51 @@ class ContinuousPipeline:
                 )
             if state["config"] != self.fingerprint:
                 raise ValueError("checkpoint configuration mismatch")
-        self.native = NetworkCaptureSession(settings.interval_ms, 200000, 64_000_000)
-        self.sparse = SparsePortAggregator(settings.preprocess.aggregate_sparse_ports, 2**60)
-        # Continuous cutoff, not a wall-clock throttle, owns publication.
-        self.sparse._flush_due = lambda: []
-        self.mac = MacAggregator(settings.mac_aggregation.enabled, protocol_map=settings.protocol_map)
-        self.proto = ProtoAggregator(settings.proto_aggregation.enabled, protocol_map=settings.protocol_map)
-        self.writers = {}
-        for k, config, enabled in [
-            ("network", settings.influx, True),
-            ("mac", settings.mac_influx, self.mac.enabled),
-            ("proto", settings.proto_influx, self.proto.enabled),
-        ]:
-            if not enabled:
-                continue
-            if config is None:
-                raise ValueError("enabled measurement configuration missing")
-            if write_enabled:
-                self.writers[k] = InfluxDBWriter(config, settings.write_options, settings.interval_ms)
-            else:
-                # Point normalization uses the existing production class without a network client.
-                writer = InfluxDBWriter.__new__(InfluxDBWriter)
-                writer.config = config
-                writer.window_interval_ms = settings.interval_ms
-                from otalon_capture.influxdb_writer import _map_precision
+        try:
+            self.native = NetworkCaptureSession(settings.interval_ms, 200000, 64_000_000)
+            self.sparse = SparsePortAggregator(settings.preprocess.aggregate_sparse_ports, 2**60)
+            # Continuous cutoff, not a wall-clock throttle, owns publication.
+            self.sparse._flush_due = lambda: []
+            self.mac = MacAggregator(settings.mac_aggregation.enabled, protocol_map=settings.protocol_map)
+            self.proto = ProtoAggregator(settings.proto_aggregation.enabled, protocol_map=settings.protocol_map)
+            for k, config, enabled in [
+                ("network", settings.influx, True),
+                ("mac", settings.mac_influx, self.mac.enabled),
+                ("proto", settings.proto_influx, self.proto.enabled),
+            ]:
+                if not enabled:
+                    continue
+                if config is None:
+                    raise ValueError("enabled measurement configuration missing")
+                if write_enabled:
+                    self.writers[k] = InfluxDBWriter(config, settings.write_options, settings.interval_ms)
+                else:
+                    # Point normalization uses the existing production class without a network client.
+                    writer = InfluxDBWriter.__new__(InfluxDBWriter)
+                    writer.config = config
+                    writer.window_interval_ms = settings.interval_ms
+                    from otalon_capture.influxdb_writer import _map_precision
 
-                writer.write_precision = _map_precision(settings.write_options.precision)
-                writer.int_fields = {
-                    "packet_count",
-                    "total_volume",
-                    "min_packet_size",
-                    "max_packet_size",
-                    "collapsed_port_count",
-                }
-                self.writers[k] = writer
-        if state:
-            self.native.restore_state(decode(state["native"]))
-            for k, agg in [("sparse", self.sparse), ("mac", self.mac), ("proto", self.proto)]:
-                agg.buckets = decode(state[k])
-            self.sparse._latest_record_ms = state["latest_record_ms"]
+                    writer.write_precision = _map_precision(settings.write_options.precision)
+                    writer.int_fields = {
+                        "packet_count",
+                        "total_volume",
+                        "min_packet_size",
+                        "max_packet_size",
+                        "collapsed_port_count",
+                    }
+                    self.writers[k] = writer
+            if state:
+                self.native.restore_state(decode(state["native"]))
+                for k, agg in [("sparse", self.sparse), ("mac", self.mac), ("proto", self.proto)]:
+                    agg.buckets = decode(state[k])
+                self.sparse._latest_record_ms = state["latest_record_ms"]
+        except BaseException:
+            try:
+                self.close()
+            except BaseException:
+                pass  # Construction failure wins; release evidence remains bounded and separate.
+            raise
 
     def checkpoint(self):
         return {
@@ -241,6 +253,23 @@ class ContinuousPipeline:
 
     def close(self):
         # A process stop is NOT clean stream end. Never flush pending packet buckets.
-        for writer in self.writers.values():
-            if hasattr(writer, "client"):
-                writer.client.close()
+        if not getattr(self, "_released", False):
+            self._released = True
+            writers, self.writers = self.writers, {}
+            # Native and aggregators are in-memory owners, with no shutdown API.
+            self.native = self.sparse = self.mac = self.proto = None
+            failures = []
+            for name, writer in writers.items():
+                try:
+                    if hasattr(writer, "_lock") and callable(getattr(writer, "_release_client_locked", None)):
+                        with writer._lock:
+                            writer._release_client_locked()
+                        released = writer.release_failures
+                    else:
+                        released = release_client_no_write(getattr(writer, "client", None))
+                    failures.extend(name + "." + component for component in released)
+                except BaseException:
+                    failures.append(name + ".client")
+            self.release_failures = tuple(failures)
+        if self.release_failures:
+            raise ClientReleaseError() from None

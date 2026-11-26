@@ -9,20 +9,14 @@ from collections.abc import Mapping
 from datetime import datetime, timedelta, timezone
 from typing import Any, List
 
-from influxdb_client_3 import InfluxDBClient3
-from influxdb_client_3 import InfluxDBClient3 as _Client3
 from influxdb_client_3 import Point, WriteOptions, WritePrecision, WriteType, write_client_options
 from loguru import logger
 
+from .client_release import ClientReleaseError
+from .client_release import SynchronousClient3 as InfluxDBClient3
+from .client_release import release_client_no_write
 from .settings import InfluxConfig, WriteOptionsConfig
 from .write_failure import TerminalWriteError, permanent_auth_status
-
-
-class ClientReleaseError(RuntimeError):
-    """Sanitized release failure; component evidence is held separately."""
-
-    def __init__(self) -> None:
-        super().__init__("InfluxDB client release failed.")
 
 
 def _map_precision(precision: Any) -> WritePrecision:
@@ -93,6 +87,7 @@ class InfluxDBWriter:
         self._closed = False
         self._released = False
         self.release_failures: tuple[str, ...] = ()
+        self.client: Any = None
         self.config = influx_config
         self.window_interval_ms = int(window_interval_ms)
         self.int_fields = {"packet_count", "total_volume", "min_packet_size", "max_packet_size", "collapsed_port_count"}
@@ -111,20 +106,25 @@ class InfluxDBWriter:
             write_precision=self.write_precision,
         )
 
-        self.client = InfluxDBClient3(
-            host=str(self.config.host),
-            token=self.config.token.get_secret_value(),
-            database=self.config.database,
-            write_client_options=write_client_options(
-                success_callback=lambda key, data: _success_callback(self.config, data),
-                error_callback=lambda key, data, exc: _error_callback(self.config, data, exc),
-                retry_callback=lambda key, data, exc: _retry_callback(self.config, data, exc),
-                write_options=write_opts,
-            ),
-            auth_scheme="Bearer",
-        )
-
-        self._next_flush_deadline_ms = self._compute_next_deadline()
+        try:
+            self.client = InfluxDBClient3(
+                host=str(self.config.host),
+                token=self.config.token.get_secret_value(),
+                database=self.config.database,
+                write_client_options=write_client_options(
+                    success_callback=lambda key, data: _success_callback(self.config, data),
+                    error_callback=lambda key, data, exc: _error_callback(self.config, data, exc),
+                    retry_callback=lambda key, data, exc: _retry_callback(self.config, data, exc),
+                    write_options=write_opts,
+                ),
+                auth_scheme="Bearer",
+            )
+            self._next_flush_deadline_ms = self._compute_next_deadline()
+        except BaseException:
+            with self._lock:
+                self._closed = True
+                self._release_client_locked()
+            raise
 
     def write(self, value: Any) -> None:
         """Transform ``value`` into a point and enqueue it for writing."""
@@ -177,24 +177,7 @@ class InfluxDBWriter:
         if self._released:
             return
         self._released = True
-        if isinstance(self.client, _Client3):
-            # Inspected synchronous Client3.close is sequential; do not lose later releases.
-            resources = [
-                ("write_api", getattr(self.client, "_write_api", None)),
-                ("query_api", getattr(self.client, "_query_api", None)),
-                ("http_client", getattr(self.client, "_client", None)),
-            ]
-        else:
-            resources = [("client", self.client)]
-        failures = []
-        for name, resource in resources:
-            if resource is None:
-                continue
-            try:
-                resource.close()
-            except BaseException:
-                failures.append(name)
-        self.release_failures = tuple(failures)
+        self.release_failures = release_client_no_write(self.client)
 
     def _build_point(self, value: Any) -> Point:
         point = Point(self.config.measurement_name)
